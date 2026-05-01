@@ -1,0 +1,81 @@
+<div class="manage-shell ops-status-page">
+    <main class="main-area ops-main">
+        <header class="project-header card-elevated ops-header">
+            <h1 class="ops-header__title">チーム稼働状況</h1>
+            @if (projectName) {
+                <p class="ops-header__project">{{ projectName }}</p>
+            }
+            <div class="icon-gear-wrap ops-header__gear">
+                <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">
+                    ⚙
+                </button>
+            </div>
+        </header>
+
+        @if (summaries.length === 0) {
+            <p class="empty-main ops-empty">このプロジェクトにメンバーがいません。</p>
+        } @else {
+            <div class="ops-grid">
+                @for (s of summaries; track s.memberId) {
+                    @let mem = appService.getMemberById(s.memberId);
+                    <div class="ops-card-wrap">
+                        <a
+                            class="ops-card-link"
+                            [routerLink]="['/admin/detail-member', projectId, s.memberId]"
+                            [attr.aria-label]="(mem?.name ?? 'メンバー') + 'の詳細'"
+                        >
+                            <article
+                                class="ops-card card-elevated"
+                                [class.ops-card--tone-high]="s.score >= 20"
+                                [class.ops-card--tone-mid]="s.score >= 10 && s.score < 20"
+                                [class.ops-card--tone-low]="s.score < 10"
+                            >
+                                <div class="ops-card__label">負担度</div>
+                                <div class="ops-card__hero">
+                                    <div class="ops-avatar-wrap">
+                                        @if (mem?.photoURL) {
+                                            <img class="ops-avatar" [src]="mem!.photoURL" [alt]="mem!.name + 'の写真'" />
+                                        } @else {
+                                            <div class="ops-avatar ops-avatar--placeholder" aria-hidden="true"></div>
+                                        }
+                                    </div>
+                                    <div class="ops-score">{{ s.score }}</div>
+                                </div>
+                                <div class="ops-card__footer">
+                                    <span class="ops-name">{{ mem?.name ?? '（不明）' }}</span>
+                                    <span class="ops-breakdown">{{ breakdownText(s) }}</span>
+                                </div>
+                            </article>
+                        </a>
+                        @if (s.incompleteTaskTitles.length > 0) {
+                            <div class="ops-hover-panel" role="tooltip">
+                                <div class="ops-hover-panel__title">未完了タスク</div>
+                                <ul class="ops-hover-panel__list">
+                                    @for (title of previewTitles(s); track $index) {
+                                        <li class="ops-hover-panel__item">{{ title }}</li>
+                                    }
+                                    @if (previewRestCount(s) > 0) {
+                                        <li class="ops-hover-panel__more">他 {{ previewRestCount(s) }} 件</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen" aria-label="メニュー">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav">
+            <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+            <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">メンバー追加</a>
+            <button type="button" class="side-drawer__item side-drawer__btn" (click)="scrollToTop()">トップに戻る</button>
+        </nav>
+    </aside>
+</div>

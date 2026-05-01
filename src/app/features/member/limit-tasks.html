@@ -1,0 +1,268 @@
+<div class="manage-shell limit-tasks">
+    <aside class="sidebar card-elevated">
+        <div class="sidebar__inner">
+            <h2 class="sidebar-section-title">MYタスク作成</h2>
+            <label class="field-label" for="lt-title">タイトル欄</label>
+            <input id="lt-title" class="input-pill" type="text" placeholder="タイトル" [(ngModel)]="title" name="ltitle" />
+
+            <label class="field-label" for="lt-dl">期限</label>
+            <div class="deadline-row limit-deadline-row">
+                <input id="lt-dl" class="input-pill deadline-row__input" type="datetime-local" [(ngModel)]="deadlineInput" name="ldeadline" />
+                <button
+                    type="button"
+                    class="urgent-lamp"
+                    [class.urgent-lamp--on]="isUrgent"
+                    (click)="toggleUrgent()"
+                    title="緊急（優先度：高）"
+                    [attr.aria-pressed]="isUrgent"
+                >
+                    <!--<svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            fill="currentColor"
+                            d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6A4.997 4.997 0 0 1 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1zM11 19h2v1c0 1.1-.9 2-2 2s-2-.9-2-2v-1h2z"
+                        />
+                    </svg>-->
+                    <svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 19h16v2H4v-2z" fill="currentColor"/>
+                        <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9"/>
+                        <path d="M10 6c-1.1 0-2 .9-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-today-create" [class.btn-today-create--on]="isCreateToday" (click)="toggleCreateToday()" [attr.aria-pressed]="isCreateToday">
+                    今日やる！
+                </button>
+            </div>
+
+            <label class="field-label" for="lt-desc">備考欄</label>
+            <textarea id="lt-desc" class="textarea-pill" rows="4" placeholder="備考欄" [(ngModel)]="description" name="ldesc"></textarea>
+
+            <button type="button" class="btn-confirm" (click)="createParentTask()">確定</button>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <header class="project-header card-elevated limit-header">
+            <div class="limit-header__titles">
+                <h1 class="project-header__title limit-header__main-title">担当するタスク一覧</h1>
+                <p class="limit-header__sub">{{ projectName || 'プロジェクト' }} · {{ memberDisplayName }}</p>
+            </div>
+            <div class="project-header__filter">
+                <span class="filter-label">タスク絞り込み</span>
+                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="lfilt">
+                    <option [ngValue]="'all'">すべて表示</option>
+                    @for (t of parentTasksForFilter; track t.id) {
+                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
+                    }
+                </select>
+            </div>
+            <div class="icon-gear-wrap">
+                <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="メニューを開く">⚙</button>
+            </div>
+        </header>
+
+        <div class="parent-list">
+            @for (task of visibleParentTasks; track task.id) {
+                <article class="parent-card card-elevated">
+                    @if (isMyTask(task)) {
+                        <div class="parent-card__toolbar">
+                            <button type="button" class="btn-delete" (click)="deleteParentTask(task.id)" title="MYタスクを削除" aria-label="削除">
+                                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
+                            </button>
+                        </div>
+                    }
+                    <div class="parent-card__grid parent-card__grid--two">
+                        <section class="parent-info">
+                            @if (parentEditTaskId === task.id && parentEditDraft; as ed) {
+                                <div class="inline-edit-block">
+                                    <label class="field-label">期限</label>
+                                    <div class="deadline-row">
+                                        <input class="input-pill deadline-row__input" type="datetime-local" [(ngModel)]="ed.deadlineInput" name="pedl-{{ task.id }}" />
+                                        <button type="button" class="urgent-lamp" [class.urgent-lamp--on]="ed.isUrgent" (click)="toggleDraftUrgent('main')">
+                                            <!--<svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path
+                                                    fill="currentColor"
+                                                    d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6A4.997 4.997 0 0 1 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1zM11 19h2v1c0 1.1-.9 2-2 2s-2-.9-2-2v-1h2z"
+                                                />
+                                            </svg>-->
+                                            <svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M4 19h16v2H4v-2z" fill="currentColor"/>
+                                                <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9"/>
+                                                <path d="M10 6c-1.1 0-2 .9-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5"/>
+                                              </svg>
+                                        </button>
+                                    </div>
+                                    <label class="field-label">タイトル</label>
+                                    <input class="input-pill" [(ngModel)]="ed.title" name="pet-{{ task.id }}" />
+                                    <label class="field-label">備考欄（一覧ではホバーで表示）</label>
+                                    <textarea class="textarea-pill" rows="3" [(ngModel)]="ed.description" name="ped-{{ task.id }}"></textarea>
+                                    <label class="field-label">担当｜メンバー</label>
+                                    <div class="member-checkboxes">
+                                        @for (user of users; track user.uid) {
+                                            <label class="member-check">
+                                                <input
+                                                    type="checkbox"
+                                                    [checked]="isMemberCheckedInDraft(parentEditDraft, user.uid)"
+                                                    (change)="onDraftMemberChange('main', user.uid, $any($event.target).checked)"
+                                                />
+                                                <span class="member-check__name">{{ user.name }}</span>
+                                            </label>
+                                        }
+                                    </div>
+                                    <div class="inline-edit-actions">
+                                        <button type="button" class="btn-inline-save" (click)="saveParentEdit(task.id)">保存</button>
+                                        <button type="button" class="btn-inline-cancel" (click)="cancelParentEdit()">キャンセル</button>
+                                    </div>
+                                </div>
+                            } @else {
+                                <div class="parent-info__view" (click)="enterParentEdit(task, $event)">
+                                    <div class="parent-info__deadline">
+                                        {{ formatDeadline(task.deadline) }}
+                                        <span class="remain">{{ remainingLabel(task.deadline) }}</span>
+                                    </div>
+                                    <div class="title-row">
+                                        @if (isMyTask(task)) {
+                                            <span class="my-badge">MY</span>
+                                        }
+                                        @if (task.priority === '高') {
+                                            <span class="siren-inline" title="緊急">
+                                                <!--<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7z"/></svg>-->
+                                                <svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M4 19h16v2H4v-2z" fill="currentColor"/>
+                                                    <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9"/>
+                                                    <path d="M10 6c-1.1 0-2 .9-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5"/>
+                                                  </svg>
+                                            </span>
+                                        }
+                                        <div class="title-box" [attr.title]="tooltipDescription(task)">{{ task.title }}</div>
+                                        <span [class]="statusClass(task.status)">{{ task.status }}</span>
+                                    </div>
+                                    <p class="edit-hint">クリックして編集</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="btn-parent-today"
+                                    [class.btn-parent-today--on]="task.isTodayTask"
+                                    (click)="toggleParentToday(task, $event)"
+                                >
+                                    {{ task.isTodayTask ? '今日やる！！' : '今日やる？' }}
+                                </button>
+                            }
+
+                            <div class="avatar-stack-wrap">
+                                <span class="avatar-stack-label">担当・メンバー</span>
+                                <div class="avatar-stack">
+                                    @for (m of membersOrderedForAvatar(task); track m.uid) {
+                                        <div class="avatar-stack__chip" [title]="m.name">
+                                            @if (m.photoURL) {
+                                                <img [src]="m.photoURL" [alt]="m.name" />
+                                            } @else {
+                                                <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                            }
+                                            <span class="avatar-stack__name">{{ m.name }}</span>
+                                        </div>
+                                    } @empty {
+                                        <span class="hint">未設定</span>
+                                    }
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="subtask-col">
+                            <div class="subtask-form subtask-form--member">
+                                <button
+                                    type="button"
+                                    class="btn-today-pill"
+                                    [class.btn-today-pill--on]="getChildInput(task.id).isTodayForNew"
+                                    (click)="toggleChildInputToday(task.id)"
+                                >
+                                    今日やる？
+                                </button>
+                                <input
+                                    class="input-pill subtask-form__title"
+                                    type="text"
+                                    placeholder="まず何する？"
+                                    [(ngModel)]="getChildInput(task.id).title"
+                                    name="ctitle-{{ task.id }}"
+                                />
+                                <select class="select-pill subtask-form__member" [(ngModel)]="getChildInput(task.id).assigneeId" name="cass-{{ task.id }}">
+                                    <option value="">担当メンバー</option>
+                                    @for (u of users; track u.uid) {
+                                        <option [value]="u.uid">{{ u.name }}</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn-add" (click)="addChildTask(task)">追加</button>
+                            </div>
+
+                            <div class="subtask-list">
+                                @for (c of appService.getChildTasksByParentId(task.id); track c.id; let i = $index) {
+                                    <div class="subtask-flow">
+                                        @if (i > 0) {
+                                            <div class="flow-arrow" aria-hidden="true"></div>
+                                        }
+                                        @if (childEditId === c.id && childEditDraft; as cd) {
+                                            <div class="subtask-item subtask-item--editing">
+                                                <input class="input-pill subtask-edit-title" [(ngModel)]="cd.title" name="ceti-{{ c.id }}" />
+                                                <select class="select-pill subtask-edit-assign" [(ngModel)]="cd.assigneeId" name="ceas-{{ c.id }}">
+                                                    <option value="">担当</option>
+                                                    @for (u of users; track u.uid) {
+                                                        <option [value]="u.uid">{{ u.name }}</option>
+                                                    }
+                                                </select>
+                                                <button type="button" class="btn-inline-save btn-inline-save--small" (click)="saveChildEdit(c.id)">保存</button>
+                                                <button type="button" class="btn-inline-cancel btn-inline-cancel--small" (click)="cancelChildEdit()">戻る</button>
+                                            </div>
+                                        } @else {
+                                            <div
+                                                class="subtask-item"
+                                                [ngClass]="{
+                                                    'subtask-item--todo': c.status === '未着手',
+                                                    'subtask-item--prog': c.status === '進行中',
+                                                    'subtask-item--done': c.status === '完了',
+                                                    'subtask-item--today': c.isTodayTask
+                                                }"
+                                            >
+                                                <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
+                                                <span class="subtask-item__title subtask-item__title--click" (click)="enterChildEdit(c, $event)">{{ c.title }}</span>
+                                                <button type="button" class="btn-today-pill btn-today-pill--row" [class.btn-today-pill--on]="c.isTodayTask" (click)="toggleChildToday(c, $event)">今日やる？</button>
+                                                <button type="button" class="subtask-assign-hit" (click)="enterChildEdit(c, $event)" title="担当を編集">
+                                                    @if (appService.getMemberById(c.assigneeId); as cm) {
+                                                        <span class="subtask-item__avatar">
+                                                            @if (cm.photoURL) {
+                                                                <img [src]="cm.photoURL" [alt]="cm.name" />
+                                                            } @else {
+                                                                <span class="subtask-item__avatar-fallback">{{ initials(cm.name) }}</span>
+                                                            }
+                                                        </span>
+                                                    }
+                                                </button>
+                                                <button type="button" class="btn-delete btn-delete--small" (click)="deleteChildTask(c.id)" title="子タスクを削除" aria-label="削除">
+                                                    <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    </div>
+                </article>
+            } @empty {
+                <p class="empty-main">表示するタスクがありません。</p>
+            }
+        </div>
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen" aria-label="メニュー">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav">
+            <!--今日やることこと一覧ページ、期限未設定タスク一覧ページ、完了タスク一覧ページ、共有ページ-->
+            <a [routerLink]="['/member/today-tasks', projectId, memberId ]" class="side-drawer__item" (click)="closeRightMenu()">今日やること！</a>
+            <a [routerLink]="['/member/not-set-tasks', projectId, memberId]" class="side-drawer__item" (click)="closeRightMenu()">期限が設定されてないタスク</a>
+            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">終わったタスク</a>
+            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">共有タスク</a>
+        </nav>
+    </aside>
+</div>

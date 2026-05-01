@@ -1,0 +1,56 @@
+<div class="manage-shell detail-member-page">
+    <main class="main-area dm-main">
+        <header class="project-header card-elevated dm-header">
+            <div class="dm-header__inner">
+                <a [routerLink]="['/admin/ops-status', projectId]" class="dm-back">← チーム稼働状況</a>
+                <h1 class="dm-header__title">メンバー詳細</h1>
+                @if (projectName) {
+                    <p class="dm-header__sub">{{ projectName }}</p>
+                }
+            </div>
+        </header>
+
+        @if (!member) {
+            <p class="empty-main">メンバーが見つかりません。</p>
+        } @else {
+            <section class="dm-profile card-elevated">
+                <div class="dm-profile__media">
+                    @if (member.photoURL) {
+                        <img class="dm-avatar" [src]="member.photoURL" [alt]="member.name + 'の写真'" />
+                    } @else {
+                        <div class="dm-avatar dm-avatar--placeholder" aria-hidden="true"></div>
+                    }
+                </div>
+                <div class="dm-profile__text">
+                    <h2 class="dm-name">{{ member.name }}</h2>
+                    <p class="dm-email">{{ member.email }}</p>
+                    @if (burden) {
+                        <p class="dm-burden">
+                            負担度スコア <strong>{{ burden.score }}</strong>
+                            （期限切れ {{ burden.overdueCount }} · 本日期限 {{ burden.dueTodayCount }} · その他未完了
+                            {{ burden.otherIncompleteCount }}）
+                        </p>
+                    }
+                </div>
+            </section>
+
+            @if (burden && burden.incompleteTaskTitles.length > 0) {
+                <section class="dm-tasks card-elevated">
+                    <h3 class="dm-tasks__heading">未完了タスク一覧</h3>
+                    <ul class="dm-tasks__list">
+                        @for (t of burden.incompleteTaskTitles; track $index) {
+                            <li class="dm-tasks__item">{{ t }}</li>
+                        }
+                    </ul>
+                </section>
+            } @else if (burden) {
+                <p class="dm-none card-elevated">未完了のタスクはありません。</p>
+            }
+
+            <nav class="dm-nav">
+                <a [routerLink]="['/admin/manage-tasks', projectId]" class="dm-nav__link">親タスク管理へ</a>
+                <a [routerLink]="['/admin/ops-status', projectId]" class="dm-nav__link">チーム稼働状況へ</a>
+            </nav>
+        }
+    </main>
+</div>

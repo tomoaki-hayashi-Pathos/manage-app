@@ -1,0 +1,67 @@
+import { Component, HostListener, inject } from '@angular/core';
+import { AppService } from '../../app.service';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { MemberBurdenSummary } from '../../core/interface';
+
+@Component({
+    selector: 'app-ops-status',
+    standalone: true,
+    imports: [CommonModule, RouterLink],
+    templateUrl: './ops-status.html',
+    styleUrls: ['./Manage-tasks.css', './ops-status.css']
+})
+export class OpsStatusComponent {
+    readonly appService = inject(AppService);
+    readonly route = inject(ActivatedRoute);
+    readonly projectId = this.route.snapshot.params['projectId'] as string;
+
+    rightMenuOpen = false;
+
+    get projectName(): string {
+        return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    }
+
+    /** 負担度の高い順（サービス側でソート済み） */
+    get summaries(): MemberBurdenSummary[] {
+        return this.appService.getMemberBurdenSummaries(this.projectId);
+    }
+
+    breakdownText(s: MemberBurdenSummary): string {
+        if (s.overdueCount === 0 && s.dueTodayCount === 0) {
+            return '(期限切れ、今日締め切りなし)';
+        }
+        return `(期限切れ${s.overdueCount}、本日期限${s.dueTodayCount})`;
+    }
+
+    previewTitles(s: MemberBurdenSummary): string[] {
+        return s.incompleteTaskTitles.slice(0, 5);
+    }
+
+    previewRestCount(s: MemberBurdenSummary): number {
+        const n = s.incompleteTaskTitles.length;
+        return n > 5 ? n - 5 : 0;
+    }
+
+    toggleRightMenu(ev: MouseEvent): void {
+        ev.stopPropagation();
+        this.rightMenuOpen = !this.rightMenuOpen;
+    }
+
+    closeRightMenu(): void {
+        this.rightMenuOpen = false;
+    }
+
+    scrollToTop(): void {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        this.rightMenuOpen = false;
+    }
+
+    @HostListener('document:click', ['$event'])
+    onDocumentClick(ev: MouseEvent): void {
+        if (!this.rightMenuOpen) return;
+        const t = ev.target as HTMLElement;
+        if (t.closest('.side-drawer') || t.closest('.icon-gear-wrap')) return;
+        this.rightMenuOpen = false;
+    }
+}

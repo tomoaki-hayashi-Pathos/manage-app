@@ -1,0 +1,80 @@
+<div class="manage-shell not-set-page">
+    <main class="main-area main-area--not-set">
+        <header class="project-header card-elevated nst-header">
+            <div class="nst-header__left">
+                <h1 class="nst-header__title">期限が設定されてないタスク</h1>
+                <p class="nst-header__sub">{{ projectName || 'プロジェクト' }} · {{ memberDisplayName }}</p>
+            </div>
+            <div class="nst-header__right">
+                <div class="project-header__filter nst-filter">
+                    <span class="filter-label">タスク絞り込み</span>
+                    <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="nsfilt">
+                        <option [ngValue]="'all'">タスクを選んでください</option>
+                        @for (t of parentTasksForFilter; track t.id) {
+                            <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
+                        }
+                    </select>
+                </div>
+                <div class="icon-gear-wrap">
+                    <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">⚙</button>
+                </div>
+            </div>
+        </header>
+
+        @if (isSaving) {
+            <div class="nst-saving-overlay" aria-live="polite">
+                <div class="nst-saving-spinner"></div>
+                <span>反映中…</span>
+            </div>
+        }
+
+        <div class="nst-list">
+            @for (task of visibleParents; track task.id) {
+                <div class="nst-row card-elevated" [class.nst-row--changed]="hasPendingChange(task)">
+                    <div class="nst-row__title" [attr.title]="tooltipDescription(task)">
+                        {{ task.title || '（無題）' }}
+                    </div>
+                    <button
+                        type="button"
+                        class="nst-btn-today"
+                        [class.nst-btn-today--on]="working[task.id]?.isToday"
+                        (click)="toggleToday(task)"
+                        [attr.aria-pressed]="!!working[task.id]?.isToday"
+                    >
+                        今日やる？
+                    </button>
+                    <input
+                        class="input-pill nst-date"
+                        type="datetime-local"
+                        [ngModel]="working[task.id]?.deadlineInput ?? ''"
+                        (ngModelChange)="onDeadlineInput(task, $event)"
+                        [name]="'nsdl-' + task.id"
+                    />
+                </div>
+            } @empty {
+                <p class="empty-main">期限未設定のタスクはありません。</p>
+            }
+        </div>
+    </main>
+
+    <button type="button" class="nst-fab-confirm" [disabled]="isSaving" (click)="confirmAll()" title="変更を一括で確定">
+        @if (isSaving) {
+            <span class="nst-fab-spinner" aria-hidden="true"></span>
+        } @else {
+            確定
+        }
+    </button>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()">×</button>
+        <nav class="side-drawer__nav">
+            <a [routerLink]="['/member/limit-tasks', projectId, memberId]" class="side-drawer__item" (click)="closeRightMenu()">担当タスク一覧</a>
+            <a [routerLink]="['/member/today-tasks', projectId, memberId]" class="side-drawer__item" (click)="closeRightMenu()">今日やること</a>
+            <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">管理者画面</a>
+            <button type="button" class="side-drawer__item side-drawer__btn" (click)="scrollToTop()">トップに戻る</button>
+        </nav>
+    </aside>
+</div>

@@ -1,0 +1,132 @@
+.detail-member-page.manage-shell {
+    flex-direction: column;
+}
+
+.dm-main {
+    width: 100%;
+}
+
+.dm-header__inner {
+    width: 100%;
+    text-align: center;
+}
+
+.dm-back {
+    display: inline-block;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1565c0;
+    text-decoration: none;
+}
+
+.dm-back:hover {
+    text-decoration: underline;
+}
+
+.dm-header__title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+.dm-header__sub {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: #555;
+    font-weight: 600;
+}
+
+.dm-profile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    margin-top: 0.75rem;
+}
+
+.dm-avatar {
+    width: 5.5rem;
+    height: 5.5rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-btn);
+}
+
+.dm-avatar--placeholder {
+    background: linear-gradient(145deg, #bdbdbd, #757575);
+}
+
+.dm-name {
+    margin: 0 0 0.25rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dm-email {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+.dm-burden {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+.dm-tasks {
+    margin-top: 1rem;
+    padding: 1rem 1.15rem;
+}
+
+.dm-tasks__heading {
+    margin: 0 0 0.65rem;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.dm-tasks__list {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.dm-tasks__item {
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.dm-none {
+    margin-top: 1rem;
+    padding: 1rem;
+    text-align: center;
+    font-weight: 700;
+}
+
+.dm-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.dm-nav__link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 0.9rem;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #111;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: var(--shadow-btn);
+}
+
+.dm-nav__link:hover {
+    filter: brightness(1.05);
+}

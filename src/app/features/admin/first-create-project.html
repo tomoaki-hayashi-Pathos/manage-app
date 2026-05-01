@@ -1,0 +1,68 @@
+<div class="fcp-page">
+    <div class="fcp-card">
+        <h1 class="fcp-title">プロジェクト作成</h1>
+        <p class="fcp-lead">プロジェクト名を入力し、参加メンバーを選択してください。先にチェックした人が管理者（admin）として登録されます。</p>
+
+        <div class="fcp-field">
+            <label class="fcp-label" for="projectName">プロジェクト名</label>
+            <input
+                id="projectName"
+                class="fcp-input"
+                type="text"
+                name="projectName"
+                [(ngModel)]="projectName"
+                placeholder="例：A社との合同プロジェクト"
+                autocomplete="organization"
+            />
+        </div>
+
+        <section class="fcp-members">
+            <h2 class="fcp-section-title">参加メンバー</h2>
+            <p class="fcp-hint">チェックを入れた順がそのまま保存されます（1人目＝管理者）。</p>
+
+            @if (appService.members.length === 0) {
+                <div class="fcp-empty">
+                    <p class="fcp-empty__text">登録済みメンバーがいません。先にメンバーを登録してください。</p>
+                    <a routerLink="/admin/create-member" class="btn btn--primary btn--large">新規メンバー登録</a>
+                </div>
+            } @else {
+                <ul class="fcp-member-list">
+                    @for (m of appService.members; track m.uid) {
+                        <li>
+                            <label
+                                class="fcp-member-row"
+                                [class.fcp-member-row--selected]="isSelected(m.uid)"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="fcp-member-row__check"
+                                    [checked]="isSelected(m.uid)"
+                                    (change)="onMemberCheckboxChange(m.uid, $any($event.target).checked)"
+                                />
+                                @if (m.photoURL) {
+                                    <img class="fcp-member-row__photo" [src]="m.photoURL" [alt]="m.name" />
+                                } @else {
+                                    <span class="fcp-member-row__fallback" aria-hidden="true">{{
+                                        m.name.trim().slice(0, 2) || '？'
+                                    }}</span>
+                                }
+                                <span class="fcp-member-row__body">
+                                    <span class="fcp-member-row__name">{{ m.name }}</span>
+                                    <span class="fcp-member-row__meta">{{ m.email }} · {{ m.role }}</span>
+                                </span>
+                            </label>
+                        </li>
+                    }
+                </ul>
+
+                <div class="fcp-actions">
+                    <button type="button" class="btn btn--primary" (click)="createProject()">プロジェクト作成</button>
+                </div>
+
+                <div class="fcp-sub">
+                    <a routerLink="/admin/create-member" class="btn btn--ghost">メンバーを追加登録</a>
+                </div>
+            }
+        </section>
+    </div>
+</div>

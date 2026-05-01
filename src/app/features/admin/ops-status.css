@@ -1,0 +1,254 @@
+/* チーム稼働状況（管理者ダッシュボード） */
+
+.ops-status-page.manage-shell {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.ops-main {
+    width: 100%;
+}
+
+.ops-header {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.85rem 3.5rem 0.85rem 1.2rem;
+    text-align: center;
+}
+
+.ops-header__title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    width: 100%;
+}
+
+.ops-header__project {
+    margin: 0.25rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.ops-header__gear {
+    position: absolute;
+    right: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.ops-empty {
+    margin-top: 1rem;
+}
+
+.ops-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.15rem;
+    margin-top: 0.5rem;
+}
+
+@media (min-width: 640px) {
+    .ops-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .ops-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.ops-card-wrap {
+    position: relative;
+    overflow: visible;
+    min-width: 0;
+}
+
+.ops-card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 22px;
+    outline: none;
+}
+
+.ops-card-link:focus-visible .ops-card {
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.65);
+}
+
+.ops-card {
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 22px;
+    padding: 0.65rem 0.85rem 0.85rem;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.ops-card-link:hover .ops-card {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.ops-card--tone-low {
+    background: #e8f5e9;
+}
+
+.ops-card--tone-mid {
+    background: #fff9c4;
+}
+
+.ops-card--tone-high {
+    background: #ffebee;
+}
+
+.ops-card__label {
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+    color: #111;
+}
+
+.ops-card__hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem 1.25rem;
+    margin-bottom: 0.55rem;
+}
+
+.ops-avatar-wrap {
+    flex: 0 0 auto;
+}
+
+.ops-avatar {
+    width: 4.75rem;
+    height: 4.75rem;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    border: 2px solid rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-btn);
+}
+
+.ops-avatar--placeholder {
+    background: linear-gradient(145deg, #bdbdbd, #9e9e9e);
+}
+
+.ops-score {
+    font-size: clamp(2.4rem, 8vw, 3.25rem);
+    font-weight: 900;
+    line-height: 1;
+    color: #111;
+    min-width: 0;
+}
+
+.ops-card__footer {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.ops-name {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #111;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ops-breakdown {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #222;
+    flex: 0 1 auto;
+    max-width: 100%;
+    text-align: right;
+    line-height: 1.35;
+}
+
+/* ホバー・ツールチップ（visibility でフェード） */
+.ops-hover-panel {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    top: calc(100% - 4px);
+    z-index: 120;
+    min-width: min(100%, 280px);
+    max-width: min(92vw, 340px);
+    padding: 0.55rem 0.65rem 0.65rem;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid #222;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        opacity 0.22s ease,
+        visibility 0.22s ease,
+        transform 0.22s ease;
+}
+
+.ops-card-wrap:hover .ops-hover-panel {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+
+.ops-hover-panel__title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin-bottom: 0.35rem;
+    color: #333;
+}
+
+.ops-hover-panel__list {
+    margin: 0;
+    padding-left: 1rem;
+    max-height: 11rem;
+    overflow-y: auto;
+}
+
+.ops-hover-panel__item {
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ops-hover-panel__more {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #555;
+    list-style: none;
+    margin-left: -1rem;
+    padding-left: 0;
+}
+
+@media (max-width: 380px) {
+    .ops-hover-panel {
+        left: 0;
+        right: auto;
+        transform: translateX(0) translateY(6px);
+        max-width: 100%;
+    }
+
+    .ops-card-wrap:hover .ops-hover-panel {
+        transform: translateX(0) translateY(0);
+    }
+}

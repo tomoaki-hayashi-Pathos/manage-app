@@ -1,0 +1,140 @@
+/* メンバー専用の上書き・追加（Manage-tasks.css を併用） */
+
+.limit-tasks .sidebar-section-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #c62828;
+}
+
+.limit-deadline-row {
+    flex-wrap: wrap;
+}
+
+.btn-today-create {
+    flex: 1 1 100px;
+    min-height: 44px;
+    border: 2px solid #ccc;
+    border-radius: 16px;
+    background: #f0f0f0;
+    font-size: 0.88rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition:
+        background 0.2s,
+        color 0.2s,
+        border-color 0.2s;
+}
+
+.btn-today-create--on {
+    background: #ffeb3b;
+    border-color: #f9a825;
+    color: #111;
+    box-shadow: 0 2px 12px rgba(249, 168, 37, 0.45);
+}
+
+.limit-header {
+    align-items: flex-start;
+}
+
+.limit-header__titles {
+    flex: 1 1 200px;
+    text-align: center;
+}
+
+.limit-header__main-title {
+    margin: 0 0 0.2rem;
+}
+
+.limit-header__sub {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.my-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.1rem;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: #111;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.btn-parent-today {
+    display: block;
+    width: 100%;
+    margin: 0.75rem 0 0.25rem;
+    padding: 0.75rem 1rem;
+    border: 2px solid #aaa;
+    border-radius: 18px;
+    background: #ececec;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #333;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    transition:
+        background 0.2s,
+        color 0.2s,
+        border-color 0.2s,
+        transform 0.1s;
+}
+
+.btn-parent-today:hover {
+    filter: brightness(1.03);
+}
+
+.btn-parent-today--on {
+    background: #ffeb3b;
+    border-color: #f9a825;
+    color: #111;
+    box-shadow: 0 4px 16px rgba(249, 168, 37, 0.4);
+}
+
+.subtask-form--member {
+    align-items: center;
+}
+
+.btn-today-pill {
+    flex: 0 0 auto;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    border: 2px solid #ccc;
+    background: #f3f3f3;
+    font-size: 0.75rem;
+    font-weight: 800;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-today-pill--on {
+    background: #ffeb3b;
+    border-color: #f9a825;
+    color: #111;
+}
+
+.btn-today-pill--row {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.68rem;
+}
+
+.subtask-item--today {
+    background: linear-gradient(180deg, #fffde7 0%, #ffeb3b 55%) !important;
+    border-color: #f9a825 !important;
+}
+
+.limit-tasks .parent-card__toolbar {
+    top: 0.45rem;
+    left: 0.55rem;
+    right: auto;
+}
