@@ -148,6 +148,7 @@
                                 [class.today-action-btn--prog]="statusForItem(item) === '進行中'"
                                 [class.today-action-btn--done]="statusForItem(item) === '完了'"
                                 (click)="cycleAction(item, $event)"
+                                [disabled]="statusForItem(item) === '完了'"
                             >
                                 {{ actionLabel(statusForItem(item)) }}
                             </button>
@@ -211,6 +212,7 @@
                                                         [class.today-action-btn--prog]="c.status === '進行中'"
                                                         [class.today-action-btn--done]="c.status === '完了'"
                                                         (click)="cycleChildAction(c, $event)"
+                                                        [disabled]="c.status === '完了'"
                                                         >
                                                         {{ c.status }}
                                                     </button>

@@ -304,7 +304,7 @@ export class AppService {
 
     /** 巨大ボタン用：親タスクのステータスを 未着手→進行中→完了→… と進める */
 
-    cycleParentTaskStatus(parentTaskId: string): void {
+    /**cycleParentTaskStatus(parentTaskId: string): void {
 
         const parent = this.parentTasks.find((p) => p.id === parentTaskId);
 
@@ -332,7 +332,7 @@ export class AppService {
 
 
 
-    /** 巨大ボタン用：子タスクのステータスを循環 */
+     巨大ボタン用：子タスクのステータスを循環 
 
     cycleChildTaskStatus(childTaskId: string): void {
 
@@ -348,7 +348,52 @@ export class AppService {
 
         this.syncParentStatusWithChildren(child.parentTaskId);
 
+    } */
+
+    /** 巨大ボタン用：親タスクのステータスを進める */
+cycleParentTaskStatus(parentTaskId: string): void {
+    const parent = this.parentTasks.find((p) => p.id === parentTaskId);
+    if (!parent) return;
+
+    // すでに「完了」なら、このボタンでは何もしない（ループさせない）
+    if (parent.status === '完了') return;
+
+    const children = this.childTasks.filter((c) => c.parentTaskId === parentTaskId);
+    const order: TaskStatus[] = ['未着手', '進行中', '完了'];
+    const idx = order.indexOf(parent.status);
+    const next = order[idx + 1]; // モジュロ演算 (%) を外して、完了で止まるように変更
+
+    if (next === '完了') {
+        if (children.length > 0 && !children.every((c) => c.status === '完了')) {
+            alert('すべての子タスクが完了になるまで、親タスクを完了にできません。');
+            return;
+        }
+        // 完了した瞬間を記録
+        parent.completedAt = new Date().toISOString();
     }
+
+    parent.status = next;
+}
+
+/** 巨大ボタン用：子タスクのステータスを循環 */
+cycleChildTaskStatus(childTaskId: string): void {
+    const child = this.childTasks.find((c) => c.id === childTaskId);
+    if (!child) return;
+
+    // すでに「完了」なら、このボタンでは何もしない
+    if (child.status === '完了') return;
+
+    const order: TaskStatus[] = ['未着手', '進行中', '完了'];
+    const idx = order.indexOf(child.status);
+    const next = order[idx + 1];
+
+    if (next === '完了') {
+        child.completedAt = new Date().toISOString();
+    }
+
+    child.status = next;
+    this.syncParentStatusWithChildren(child.parentTaskId);
+}
 
 
 
@@ -576,7 +621,7 @@ export class AppService {
 
 
 
-    createMember(name: string, email: string, photoURL: string, role: 'メンバー' | 'ゲスト'): void {
+    createMember(name: string, email: string, photoURL: string, role: '' |'メンバー' | 'ゲスト'): void {
 
         if (!name?.trim() || !email?.trim()) {
 
@@ -596,7 +641,7 @@ export class AppService {
 
             photoURL: photoURL || '',
 
-            role
+            role: role
 
         });
 

@@ -60,6 +60,8 @@ export interface ParentTask {
     //今日やるタスク
     isTodayTask: boolean,
 
+    //タスク完了時間
+    completedAt?: string;
 }
 
 
@@ -87,6 +89,9 @@ export interface ChildTask {
     //今日やるタスク
     isTodayTask: boolean,
 
+    //タスク完了時間
+    completedAt?: string;
+
 }
 
 
@@ -102,8 +107,8 @@ export interface Member {
     email: string,
 
     photoURL: string,
-
-    role: 'メンバー' | 'ゲスト'
+    //ログイン機能ができるまでは管理者は空白でいく
+    role: '' | 'メンバー' | 'ゲスト'
 
 }
 
