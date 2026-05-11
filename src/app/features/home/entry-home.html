@@ -1,0 +1,35 @@
+<div class="entry">
+  <div class="card">
+    <h1>トップページ</h1>
+
+    @if (!app.ready() || auth.loading()) {
+      <p>ログイン状態を確認しています。しばらくお待ちください。</p>
+    } @else if (!auth.user()) {
+      <p>まずGoogleでログインしてください。</p>
+      <button type="button" class="btn" (click)="login()">Googleでログイン</button>
+    } @else {
+      <div class="user">
+        <p>ログイン中: {{ auth.user()?.displayName || auth.user()?.email }}</p>
+        <button type="button" class="btn btn-ghost" (click)="logout()">ログアウト</button>
+      </div>
+
+      @if (!isApproved()) {
+        <p class="pending">管理者からの承認を待っています。しばらくお待ちください。</p>
+      } @else if (isAdmin()) {
+        <p>管理者メニューへ移動しています。</p>
+      } @else {
+        <section class="section">
+          <h2>メンバートップ</h2>
+          <label>参加プロジェクト</label>
+          <select [(ngModel)]="memberProjectId">
+            <option value="">選択してください</option>
+            @for (p of assignedProjects(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+          </select>
+          <button type="button" class="btn" (click)="openMemberProject()">メンバーページへ</button>
+        </section>
+      }
+    }
+  </div>
+</div>

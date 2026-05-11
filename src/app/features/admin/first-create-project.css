@@ -65,6 +65,13 @@
     border-color: var(--accent);
 }
 
+.fcp-input--disabled {
+    background: #f4f4f4;
+    color: #8a8a8a;
+    border-color: #d8d8d8;
+    cursor: not-allowed;
+}
+
 .fcp-section-title {
     margin: 0 0 0.35rem;
     font-size: 1.05rem;
@@ -177,6 +184,10 @@
 .fcp-sub {
     margin-top: 1rem;
     text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .btn {
@@ -224,4 +235,19 @@
 
 .btn--ghost:hover {
     background: #fff5f5;
+}
+/*--------------------新規プロジェクト名修正-----------------------*/
+.field-animation {
+    animation: fadeInDown 0.3s ease-out;
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }

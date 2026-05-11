@@ -1,0 +1,192 @@
+<div class="stagnation-action-bar">
+    <button type="button" class="btn-stagnation-report" (click)="openManualStagnationModal()">停滞報告 😢</button>
+    @if (isStagnatingSelf()) {
+        <span class="stagnation-action-bar__elapsed">停滞中！ 停滞から {{ stagnationElapsed() }}</span>
+        <button type="button" class="btn-resolve-stagnation" (click)="openResolveStagnationModal()">解決！</button>
+    }
+</div>
+
+@if (showOlDock) {
+    <div class="ol-dock">
+        <button type="button" class="ol-dock__btn" (click)="openOlChat()" title="AI 相談 OL">
+            <img src="/placeholders/ol-consult.svg" width="160" height="120" alt="AI 相談 OL（プレースホルダ）" />
+        </button>
+        <p class="ol-dock__hint">そろそろ休んだら？</p>
+    </div>
+}
+
+@if (progress.isAwaitingInitial(projectId, memberId) && stagnationPhase === null) {
+    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="prog-init-title">
+        <div class="modal-panel progress-shell-modal">
+            <h3 id="prog-init-title">進捗確認</h3>
+            <p>
+                管理者から進捗の報告が求められています。AI 相談を挟んだ場合は、相談を閉じたあとでもここから選べます。
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="pickInitial('もう終わる')">もう終わる</button>
+                <button type="button" class="progress-shell-modal__btn" (click)="pickInitial('問題なし')">問題なし</button>
+                <button type="button" class="progress-shell-modal__btn" (click)="pickInitial('要相談')">要相談</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (stagnationPhase === 'consult') {
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-panel progress-shell-modal progress-shell-modal--consult">
+            <div class="progress-shell-modal__consult-head">
+                <h3>相談内容</h3>
+                <button type="button" class="btn-stagnation-report btn-stagnation-report--compact" (click)="openStagnationFromConsultModal()">停滞報告</button>
+            </div>
+            <label class="field-label">対象の親タスク（複数可）</label>
+            <div class="stagnation-parent-checks">
+                <label class="stagnation-check-row">
+                    <input type="checkbox" [checked]="consultNoChange" (change)="toggleConsultNoChange($any($event.target).checked)" />
+                    <span>現状変化なし</span>
+                </label>
+                @for (t of activeParentTasks; track t.id) {
+                    <label class="stagnation-check-row">
+                        <input
+                            type="checkbox"
+                            [checked]="consultParentChecked[t.id]"
+                            (change)="toggleConsultParent(t.id, $any($event.target).checked)"
+                            [disabled]="consultNoChange"
+                        />
+                        <span>{{ t.title || '（無題）' }}</span>
+                    </label>
+                }
+            </div>
+            <label class="field-label">内容（選択した全タスクに共通）</label>
+            <textarea class="textarea-pill" rows="3" [(ngModel)]="consultContent" name="consultc"></textarea>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="submitConsultModal()">送信</button>
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--ghost" (click)="cancelConsultModal()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (stagnationPhase === 'done-pick') {
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-panel progress-shell-modal">
+            <h3>もう終わる</h3>
+            <p class="field-label">自分が担当し、進行中の親タスクまたは子タスクを選んでください（複数可）</p>
+            <div class="stagnation-parent-checks">
+                @for (r of donePickRows; track r.key) {
+                    <label class="stagnation-check-row">
+                        <input type="checkbox" [checked]="isDonePickChecked(r.key)" (change)="toggleDonePick(r.key, $any($event.target).checked)" />
+                        <span>{{ r.label }}</span>
+                    </label>
+                } @empty {
+                    <p class="hint">進行中の担当タスクがありません</p>
+                }
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="submitDonePickModal()">送信</button>
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--ghost" (click)="cancelDonePickModal()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (stagnationPhase === 'manual') {
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-panel progress-shell-modal">
+            <h3>停滞報告</h3>
+            <label class="field-label">対象の親タスク（1件のみ）</label>
+            <div class="stagnation-parent-checks">
+                @for (t of activeParentTasks; track t.id) {
+                    <label class="stagnation-check-row stagnation-check-row--radio">
+                        <input
+                            type="radio"
+                            name="stagParentRadio"
+                            [value]="t.id"
+                            [checked]="selectedReportParentId === t.id"
+                            (change)="selectReportParent(t.id)"
+                        />
+                        <span>{{ t.title || '（無題）' }}</span>
+                    </label>
+                }
+            </div>
+            @if (selectedReportParentId) {
+                <label class="field-label">子タスク（任意）</label>
+                <select class="select-pill" [(ngModel)]="stagnationChildId" name="stagc">
+                    <option value="">（親タスクのみ）</option>
+                    @for (opt of childOptionsForStagnation(selectedReportParentId); track opt.id) {
+                        <option [value]="opt.id">{{ opt.title }}</option>
+                    }
+                </select>
+            }
+            <label class="field-label">内容</label>
+            <textarea class="textarea-pill" rows="3" [(ngModel)]="stagnationReason" name="stagr"></textarea>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="submitManualStagnation()">送信</button>
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--ghost" (click)="cancelStagnationModal()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (stagnationPhase === 'after-stagnation') {
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-panel progress-shell-modal">
+            <p>送信しました。追加で停滞報告しますか？</p>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="confirmAnotherStagnation()">はい</button>
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--ghost" (click)="closeAfterStagnationPrompt()">いいえ</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (stagnationPhase === 'resolve') {
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-panel progress-shell-modal">
+            <h3>停滞を解決</h3>
+            <p class="field-label">解決する停滞を選んでください（複数可）</p>
+            <div class="stagnation-parent-checks">
+                @for (e of stagnationEntries(); track e.id) {
+                    <label class="stagnation-check-row">
+                        <input type="checkbox" [checked]="isResolveChecked(e.id)" (change)="toggleResolveId(e.id, $any($event.target).checked)" />
+                        <span>{{ stagnationRowLabel(e) }}</span>
+                    </label>
+                }
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="submitResolveStagnation()">解決する</button>
+                <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--ghost" (click)="cancelStagnationModal()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (aiChat.chatOpen()) {
+    <div class="ai-chat-overlay" role="dialog" aria-modal="true" aria-label="AI 相談">
+        <div class="ai-chat__titlebar">
+            <span>OL 相談（プレースホルダ UI）</span>
+            <button type="button" class="ai-chat__close" (click)="closeOlChat()" aria-label="閉じる">×</button>
+        </div>
+        <div class="ai-chat__body">
+            @for (m of aiChat.messages(); track m.at + m.role) {
+                <div class="ai-chat__msg" [class.ai-chat__msg--user]="m.role === 'user'" [class.ai-chat__msg--asst]="m.role === 'assistant'">
+                    {{ m.text }}
+                </div>
+            }
+        </div>
+        <div class="ai-chat__composer">
+            <input
+                class="ai-chat__input"
+                [(ngModel)]="chatDraft"
+                name="chdraft"
+                placeholder="OL に相談"
+                (keydown.enter)="$event.preventDefault(); sendOlChat()"
+            />
+            <label class="ai-chat__public-toggle">
+                <span class="ai-chat__public-label">公開</span>
+                <input type="checkbox" [(ngModel)]="chatPublicOn" name="chat-public-member" />
+                <span class="ai-chat__switch-ui" aria-hidden="true"></span>
+            </label>
+            <button type="button" class="ai-chat__send ai-chat__send--icon" (click)="sendOlChat()" [disabled]="aiChat.sending()" aria-label="送信">➤</button>
+        </div>
+    </div>
+}

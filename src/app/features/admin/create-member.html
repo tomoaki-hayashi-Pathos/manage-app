@@ -1,51 +1,30 @@
 <div class="cm-page">
     <div class="cm-card">
-        <h1 class="cm-title">新規メンバー登録</h1>
+        <h1 class="cm-title">新規ログインメンバー承認</h1>
         <p class="cm-lead">
-            名前・メール・権限を入力します。写真は任意です（未設定時は名前の頭文字で赤いアイコンを自動生成します）。
+            新規ログインしたメンバーを選択して承認します。プロフィール情報（名前・メール・写真）はログイン元の情報を採用します。
         </p>
 
-        <div class="cm-field">
-            <label class="cm-label" for="memberName">名前</label>
-            <input
-                id="memberName"
-                class="cm-input"
-                type="text"
-                name="name"
-                [(ngModel)]="name"
-                placeholder="山田 太郎"
-                autocomplete="name"
-            />
-        </div>
-
-        <div class="cm-field">
-            <label class="cm-label" for="memberEmail">メールアドレス</label>
-            <input
-                id="memberEmail"
-                class="cm-input"
-                type="email"
-                name="email"
-                [(ngModel)]="email"
-                placeholder="taro@example.com"
-                autocomplete="email"
-            />
-        </div>
-
-        <div class="cm-field">
-            <label class="cm-label" for="memberPhoto">写真（任意）</label>
-            <input id="memberPhoto" class="cm-file" type="file" accept="image/*" (change)="onFileChange($event)" />
-            <p class="cm-hint">アップロードしない場合、登録時に名前の頭文字から赤いアイコンを生成します。</p>
-        </div>
-
-        @if (avatarPreviewSrc) {
-            <div class="cm-preview">
-                <span class="cm-preview__label">プレビュー</span>
-                <img class="cm-preview__img" [src]="avatarPreviewSrc" [alt]="name || 'アイコン'" />
+        @if (appService.pendingLoginMembers.length === 0) {
+            <p class="cm-hint">承認待ちメンバーはいません。</p>
+        } @else {
+            <div class="cm-field">
+                <label class="cm-label" for="pendingMembers">承認対象（複数選択）</label>
+                <select id="pendingMembers" class="cm-select" multiple size="8">
+                    @for (p of appService.pendingLoginMembers; track p.email) {
+                        <option
+                            [selected]="isChecked(p.email)"
+                            (click)="onPendingChange(p.email, !isChecked(p.email))"
+                        >
+                            {{ p.name }} ({{ p.email }})
+                        </option>
+                    }
+                </select>
             </div>
         }
 
         <div class="cm-field">
-            <label class="cm-label" for="memberRole">権限</label>
+            <label class="cm-label" for="memberRole">承認後ロール</label>
             <select id="memberRole" class="cm-select" name="role" [(ngModel)]="role">
                 @for (r of roleOptions; track r) {
                     <option [ngValue]="r">{{ r }}</option>
@@ -54,10 +33,12 @@
         </div>
 
         <div class="cm-actions">
-            <button type="button" class="btn btn--primary" (click)="createMemberAndGoToProject()">登録してプロジェクト作成へ</button>
-            <button type="button" class="btn btn--secondary" (click)="createMemberAndContinue()">続けて登録</button>
-            <a routerLink="/admin/create-project" class="btn btn--ghost">プロジェクト作成へ戻る（登録しない）</a>
-            <a [routerLink]="['/admin/manage-tasks', projectId]" class="btn btn--ghost">本プロジェクトへ戻る</a>
+            <button type="button" class="btn btn--primary" (click)="approveSelected()">選択メンバーを承認</button>
+            <button type="button" class="btn btn--secondary" (click)="goTop()">トップへ戻る</button>
+            <a routerLink="/admin/create-project" class="btn btn--ghost">プロジェクト作成・編集へ</a>
+            @if (projectId) {
+                <a [routerLink]="['/admin/manage-tasks', projectId]" class="btn btn--ghost">管理画面へ戻る</a>
+            }
         </div>
     </div>
 </div>

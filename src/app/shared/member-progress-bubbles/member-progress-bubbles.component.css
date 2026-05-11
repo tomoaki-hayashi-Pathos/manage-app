@@ -1,0 +1,183 @@
+.member-progress-bubbles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.35rem 0.5rem;
+}
+
+.member-progress-bubbles--inline {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(48vw, 280px);
+    justify-content: flex-end;
+}
+
+.member-progress-bubbles--empty {
+    min-height: 3.75rem;
+}
+
+.member-progress-dock--empty-slot {
+    opacity: 0.92;
+}
+
+.speech-bubble--empty-slot-bubble .speech-bubble__body {
+    border-style: dashed;
+    border-color: #888;
+    background: #fafafa;
+}
+
+.member-progress-dock {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.12rem;
+    max-width: 100%;
+}
+
+.member-progress-dock__avatar {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid #222;
+    background: #e0e0e0;
+    display: grid;
+    place-items: center;
+    font-size: 0.62rem;
+    font-weight: 800;
+}
+
+.member-progress-dock__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.member-progress-dock__fallback {
+    line-height: 1;
+}
+
+/* CSS のみの吹き出し（角丸＋左下しっぽ） */
+.speech-bubble--css {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 4.75rem;
+    min-height: 3.5rem;
+    margin: 0 0 0.15rem;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    isolation: isolate;
+    cursor: default;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+.speech-bubble--css .speech-bubble__body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.38rem 0.5rem;
+    margin-bottom: 0.45rem;
+    text-align: center;
+    gap: 0.15rem;
+    background: #fff;
+    border: 2px solid #222;
+    border-radius: 14px;
+}
+
+.speech-bubble--css .speech-bubble__body::after {
+    content: '';
+    position: absolute;
+    left: 0.65rem;
+    bottom: -0.42rem;
+    width: 0.65rem;
+    height: 0.65rem;
+    background: #fff;
+    border: 2px solid #222;
+    border-top: none;
+    border-right: none;
+    transform: rotate(-45deg);
+    box-sizing: border-box;
+}
+
+.speech-bubble--css .speech-bubble__short {
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1.2;
+    color: #111;
+    max-width: 3.4rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.speech-bubble--stagnate.speech-bubble--css .speech-bubble__short {
+    color: #b71c1c;
+}
+
+.speech-bubble--css .speech-bubble__detail {
+    display: none;
+    max-width: min(14rem, 70vw);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #222;
+}
+
+.speech-bubble--css.speech-bubble--expandable:hover {
+    z-index: 50;
+    width: auto;
+    min-width: 4.75rem;
+    max-width: min(92vw, 18rem);
+}
+
+.speech-bubble--css.speech-bubble--expandable:hover .speech-bubble__body {
+    border-radius: 14px;
+}
+
+.speech-bubble--css.speech-bubble--expandable:hover .speech-bubble__short {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: 100%;
+}
+
+.speech-bubble--css.speech-bubble--expandable:hover .speech-bubble__detail {
+    display: block;
+}
+
+.speech-bubble--css:not(.speech-bubble--expandable):hover .speech-bubble__short {
+    max-width: 3.4rem;
+}
+
+.speech-bubble--always-detail .speech-bubble__short {
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.speech-bubble--always-detail .speech-bubble__detail {
+    display: block;
+    margin-top: 0.2rem;
+    max-width: min(14rem, 70vw);
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #333;
+}

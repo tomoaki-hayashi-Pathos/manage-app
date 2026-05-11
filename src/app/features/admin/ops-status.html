@@ -1,11 +1,22 @@
 <div class="manage-shell ops-status-page">
     <main class="main-area ops-main">
         <header class="project-header card-elevated ops-header">
+            <aside class="ops-legend" role="note" aria-label="負担度スコアの目安">
+                <div class="ops-legend__title">負担度の目安</div>
+                <ul class="ops-legend__list">
+                    <li class="ops-legend__item ops-legend__item--high"><span class="ops-legend__range">🚨 20〜</span><span class="ops-legend__label">限界</span></li>
+                    <li class="ops-legend__item ops-legend__item--mid"><span class="ops-legend__range">⚠️ 10〜19</span><span class="ops-legend__label">多忙</span></li>
+                    <li class="ops-legend__item ops-legend__item--low"><span class="ops-legend__range">✅ 〜9</span><span class="ops-legend__label">順調</span></li>
+                </ul>
+            </aside>
             <h1 class="ops-header__title">チーム稼働状況</h1>
             @if (projectName) {
                 <p class="ops-header__project">{{ projectName }}</p>
             }
             <div class="icon-gear-wrap ops-header__gear">
+                @if (gearNotifyTotal > 0) {
+                    <span class="gear-notify-badge">{{ gearNotifyTotal }}</span>
+                }
                 <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">
                     ⚙
                 </button>
@@ -74,8 +85,19 @@
         <nav class="side-drawer__nav">
             <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
             <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
-            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">メンバー追加</a>
-            <button type="button" class="side-drawer__item side-drawer__btn" (click)="scrollToTop()">トップに戻る</button>
+            <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                @if (adminNavBadge('shared') > 0) {
+                    <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                }
+                共有するタスク
+            </a>
+            <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                @if (adminNavBadge('completed') > 0) {
+                    <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                }
+                完了したタスク
+            </a>
+            <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
         </nav>
     </aside>
 </div>

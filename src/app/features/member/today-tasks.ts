@@ -1,14 +1,23 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
-import { ParentTask, Member, TaskStatus, ChildTask } from '../../core/interface';
+import { ParentTask, Member, TaskStatus, ChildTask, MENTION_ALL, MENTION_ADMIN } from '../../core/interface';
+import { MemberNavLinksComponent } from './member-nav-links';
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
+import { ProgressReportingService } from '../../services/progress-reporting.service';
+import { AiChatService } from '../../services/ai-chat.service';
+import { ProgressMemberShellComponent } from '../../shared/progress-member-shell/progress-member-shell.component';
+import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
 
 export type TodayItem =
     | { kind: 'parent'; task: ParentTask }
     | { kind: 'child'; task: ChildTask; parent: ParentTask };
+
+function itemKey(item: TodayItem): string {
+    return item.kind === 'parent' ? 'p-' + item.task.id : 'c-' + item.task.id;
+}
 
 type ParentEditDraft = {
     title: string;
@@ -16,34 +25,90 @@ type ParentEditDraft = {
     deadlineInput: string;
     selectionOrder: string[];
     isUrgent: boolean;
+    mentionUserIds: string[];
 };
 
-type ChildEditDraft = { title: string; assigneeId: string };
+type ChildEditDraft = { title: string; assigneeId: string; scheduledDateStr: string };
 
 @Component({
     selector: 'app-today-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, RouterLink],
+    imports: [
+        FormsModule,
+        CommonModule,
+        MemberNavLinksComponent,
+        DragDropModule,
+        ProgressMemberShellComponent,
+        MemberProgressBubblesComponent
+    ],
     templateUrl: './today-tasks.html',
-    styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './today-tasks.css']
+    styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './today-tasks.css', '../../progress-ai.css']
 })
-export class TodayTasksComponent {
+export class TodayTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
+    readonly progress = inject(ProgressReportingService);
+    readonly aiChat = inject(AiChatService);
 
     readonly projectId = this.route.snapshot.params['projectId'] as string;
     readonly memberId = this.route.snapshot.params['memberId'] as string;
 
+    ngOnInit(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'today');
+        this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'today');
+        this.startCharacterBubbleLoop();
+    }
+
+    ngOnDestroy(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, null);
+        this.clearCharacterBubbleTimers();
+    }
+
+    openCharacterOlChat(): void {
+        this.aiChat.openChat(this.projectId, this.memberId);
+        this.progress.onAiSessionStarted(this.projectId, this.memberId);
+    }
+
+    /** 進捗シェル（停滞報告・AI）用の親タスク一覧 */
+    get progressShellParents(): ParentTask[] {
+        return this.appService
+            .getSortedParentTasksForProject(this.projectId, false)
+            .filter((t) => this.isTaskVisibleToMember(t));
+    }
+
+    progressBubblesForChild(task: ParentTask, child: ChildTask) {
+        return this.progress.bubblesForChildRow(this.projectId, task, child.id, null, child.assigneeId ?? null);
+    }
+
+    progressBubblesParentOnly(task: ParentTask) {
+        return this.progress.bubblesForParentOnly(this.projectId, task, null);
+    }
+
+    get gearNotifyTotal(): number {
+        void this.appService.notificationTick();
+        return this.appService.getMemberGearNotificationTotal(this.projectId, this.memberId);
+    }
+
     projectName = this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    readonly characterVideoSrc = 'assets/character-typing.mp4';
+    characterBubbleVisible = false;
+    characterBubbleText = '';
+    private characterShowTimerId: number | null = null;
+    private characterHideTimerId: number | null = null;
 
     title = '';
     isUrgent = false;
     description = '';
 
+    mentionPopoverOpen = false;
+    mentionUserIds: string[] = [];
+    readonly TOK_ALL = MENTION_ALL;
+    readonly TOK_ADMIN = MENTION_ADMIN;
+
     parentTaskFilterId: string | 'all' = 'all';
 
-    /** 親カードの全表示 */
-    expandedParents: Record<string, boolean> = {};
+    /** 親の子一覧が 3 件以上のときの展開（today 専用） */
+    expandedSubChildren: Record<string, boolean> = {};
 
     rightMenuOpen = false;
     parentEditTaskId: string | null = null;
@@ -51,10 +116,18 @@ export class TodayTasksComponent {
     childEditId: string | null = null;
     childEditDraft: ChildEditDraft | null = null;
 
-    childInputs: Record<string, { title: string; assigneeId: string }> = {};
+    childInputs: Record<string, { title: string; assigneeId: string; scheduledDateStr: string; isTodayForNew: boolean }> = {};
+
+    get isTodayFilterAll(): boolean {
+        return this.parentTaskFilterId === 'all';
+    }
 
     get users(): Member[] {
         return this.appService.getMembersByProjectId(this.projectId);
+    }
+
+    get mentionableUsers(): Member[] {
+        return this.users.filter((u) => u.uid !== this.memberId);
     }
 
     get memberDisplayName(): string {
@@ -62,13 +135,13 @@ export class TodayTasksComponent {
     }
 
     isTaskVisibleToMember(t: ParentTask): boolean {
+        if (this.appService.isPrivateMyHiddenFromOtherMember(t, this.memberId)) return false;
         if (t.leadAssigneeId === this.memberId) return true;
         if (t.memberIds.includes(this.memberId)) return true;
         return this.appService.getChildTasksByParentId(t.id).some((c) => c.assigneeId === this.memberId);
     }
 
     isMyParent(task: ParentTask): boolean {
-        if (task.leadAssigneeId === this.memberId) return true;
         return task.createdById === this.memberId;
     }
 
@@ -77,17 +150,26 @@ export class TodayTasksComponent {
         const items: TodayItem[] = [];
         const parents = this.appService
             .getSortedParentTasksForProject(this.projectId, false)
-            .filter((t) => t.isTodayTask && this.isTaskVisibleToMember(t));
+            .filter((t) => (t.isTodayTask || this.appService.isParentDueToday(t.deadline)) && this.isTaskVisibleToMember(t));
         for (const p of parents) {
             items.push({ kind: 'parent', task: p });
         }
         for (const c of this.appService.childTasks) {
-            if (c.projectId !== this.projectId || !c.isTodayTask) continue;
+            if (c.projectId !== this.projectId) continue;
             const parent = this.appService.parentTasks.find((pt) => pt.id === c.parentTaskId);
             if (!parent || parent.isDraft || !this.isTaskVisibleToMember(parent)) continue;
+            if (parent.isTodayTask || this.appService.isParentDueToday(parent.deadline)) continue;
+            if (!this.appService.childAppearsOnMemberToday(parent, c, this.memberId)) continue;
             items.push({ kind: 'child', task: c, parent });
         }
         const sorted = items.sort((a, b) => {
+            const ao = this.todayOrder(itemKey(a));
+            const bo = this.todayOrder(itemKey(b));
+            if (ao !== undefined || bo !== undefined) {
+                if (ao === undefined) return 1;
+                if (bo === undefined) return -1;
+                if (ao !== bo) return ao - bo;
+            }
             const pa = a.kind === 'parent' ? a.task : a.parent;
             const pb = b.kind === 'parent' ? b.task : b.parent;
             const pr = pa.priority === '高' ? 0 : 1;
@@ -107,12 +189,15 @@ export class TodayTasksComponent {
     get parentTasksForFilter(): ParentTask[] {
         const ids = new Set<string>();
         for (const p of this.appService.getSortedParentTasksForProject(this.projectId, false)) {
-            if (p.isTodayTask && this.isTaskVisibleToMember(p)) ids.add(p.id);
+            if ((p.isTodayTask || this.appService.isParentDueToday(p.deadline)) && this.isTaskVisibleToMember(p)) ids.add(p.id);
         }
         for (const c of this.appService.childTasks) {
-            if (c.projectId !== this.projectId || !c.isTodayTask) continue;
+            if (c.projectId !== this.projectId) continue;
             const parent = this.appService.parentTasks.find((pt) => pt.id === c.parentTaskId);
-            if (parent && this.isTaskVisibleToMember(parent)) ids.add(parent.id);
+            if (!parent || !this.isTaskVisibleToMember(parent) || parent.isTodayTask || this.appService.isParentDueToday(parent.deadline)) continue;
+            if (this.appService.childAppearsOnMemberToday(parent, c, this.memberId)) {
+                ids.add(parent.id);
+            }
         }
         return [...this.appService.getAllParentTasksForProject(this.projectId)]
             .filter((t) => ids.has(t.id))
@@ -120,7 +205,32 @@ export class TodayTasksComponent {
     }
 
     trackKey(item: TodayItem): string {
-        return item.kind === 'parent' ? 'p-' + item.task.id : 'c-' + item.task.id;
+        return itemKey(item);
+    }
+
+    todayOrder(key: string): number | undefined {
+        if (key.startsWith('p-')) {
+            const id = key.slice(2);
+            const p = this.appService.parentTasks.find((x) => x.id === id);
+            return p ? this.appService.getTodayDisplayOrderForMember(p, this.memberId) : undefined;
+        }
+        const id = key.slice(2);
+        const c = this.appService.childTasks.find((x) => x.id === id);
+        return c ? this.appService.getTodayDisplayOrderForMember(c, this.memberId) : undefined;
+    }
+
+    onTodayDrop(ev: CdkDragDrop<void>): void {
+        if (!this.isTodayFilterAll) return;
+        const rows = [...this.todayItems];
+        if (ev.previousIndex === ev.currentIndex) return;
+        moveItemInArray(rows, ev.previousIndex, ev.currentIndex);
+        const keys = rows.map((x) => itemKey(x));
+        this.appService.applyTodayReorderForMember(this.memberId, keys, (k) => {
+            if (k.startsWith('p-')) {
+                return this.appService.parentTasks.find((x) => x.id === k.slice(2));
+            }
+            return this.appService.childTasks.find((x) => x.id === k.slice(2));
+        });
     }
 
     createMyTodayTask(): void {
@@ -133,23 +243,49 @@ export class TodayTasksComponent {
             this.isUrgent,
             this.memberId,
             [],
-            false,
             this.description,
             true,
-            this.memberId
+            this.memberId,
+            this.mentionUserIds
         );
         this.title = '';
         this.isUrgent = false;
         this.description = '';
+        this.mentionUserIds = [];
+        this.mentionPopoverOpen = false;
     }
 
-    toggleExpand(parentId: string, ev: Event): void {
+    toggleCreateMention(id: string, checked: boolean): void {
+        if (checked) {
+            if (!this.mentionUserIds.includes(id)) this.mentionUserIds.push(id);
+        } else {
+            this.mentionUserIds = this.mentionUserIds.filter((x) => x !== id);
+        }
+    }
+
+    isCreateMentionOn(id: string): boolean {
+        return this.mentionUserIds.includes(id);
+    }
+
+    toggleSubtasksExpand(parentId: string, ev: Event): void {
         ev.stopPropagation();
-        this.expandedParents[parentId] = !this.expandedParents[parentId];
+        this.expandedSubChildren[parentId] = !this.expandedSubChildren[parentId];
     }
 
-    isExpanded(parentId: string): boolean {
-        return !!this.expandedParents[parentId];
+    isSubtasksExpanded(parentId: string): boolean {
+        return !!this.expandedSubChildren[parentId];
+    }
+
+    visibleChildRowsForParent(parent: ParentTask): ChildTask[] {
+        const all = this.appService.getChildTasksByParentId(parent.id);
+        if (all.length < 3) return all;
+        if (this.isSubtasksExpanded(parent.id)) return all;
+        return all.slice(0, 2);
+    }
+
+    moreSubtasksHiddenCount(parent: ParentTask): number {
+        const n = this.appService.getChildTasksByParentId(parent.id).length;
+        return n >= 3 ? n - 2 : 0;
     }
 
     actionLabel(status: TaskStatus): string {
@@ -166,16 +302,46 @@ export class TodayTasksComponent {
     cycleAction(item: TodayItem, ev: Event): void {
         ev.stopPropagation();
         if (item.kind === 'parent') {
-            this.appService.cycleParentTaskStatus(item.task.id);
+            if (this.blockCompletionForParent(item.task)) return;
+            this.appService.cycleParentTaskStatus(item.task.id, this.memberId);
         } else {
-            this.appService.cycleChildTaskStatus(item.task.id);
+            if (this.blockCompletionForChild(item.task)) return;
+            this.appService.cycleChildTaskStatus(item.task.id, this.memberId);
         }
     }
 
     //子タスクのステータスを切り換える
     cycleChildAction(child: ChildTask, ev: Event): void {
         ev.stopPropagation();
-        this.appService.cycleChildTaskStatus(child.id);
+        if (this.blockCompletionForChild(child)) return;
+        this.appService.cycleChildTaskStatus(child.id, this.memberId);
+    }
+
+    /** 完了に進む直前なら停滞解決を促してブロック（親） */
+    private blockCompletionForParent(task: ParentTask): boolean {
+        if (task.status !== '進行中') return false;
+        if (this.progress.hasOpenStagnationForTask(this.projectId, task.id, null)) {
+            alert('この親タスクに停滞報告があります。先に解決してから完了にしてください。');
+            return true;
+        }
+        const children = this.appService.getChildTasksByParentId(task.id);
+        for (const c of children) {
+            if (this.progress.hasOpenStagnationForTask(this.projectId, task.id, c.id)) {
+                alert('子タスクに停滞報告があります。先に解決してから完了にしてください。');
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 完了に進む直前なら停滞解決を促してブロック（子） */
+    private blockCompletionForChild(child: ChildTask): boolean {
+        if (child.status !== '進行中') return false;
+        if (this.progress.hasOpenStagnationForTask(this.projectId, child.parentTaskId, child.id)) {
+            alert('停滞報告があります。先に解決してから完了にしてください。');
+            return true;
+        }
+        return false;
     }
 
     parentTitleForChild(parent: ParentTask): string {
@@ -288,18 +454,115 @@ export class TodayTasksComponent {
         return this.appService.getMembersByUids(ids);
     }
 
-    getChildInput(parentId: string): { title: string; assigneeId: string } {
+    memberList(task: ParentTask): Member[] {
+        return this.appService.getMembersByUids(task.memberIds);
+    }
+
+    getAssignableMemberIds(parentTask: ParentTask): string[] {
+        const ids = parentTask.leadAssigneeId ? [parentTask.leadAssigneeId, ...parentTask.memberIds] : [...parentTask.memberIds];
+        return [...new Set(ids)];
+    }
+
+    getAssignableMembers(parentTask: ParentTask): Member[] {
+        return this.appService.getMembersByUids(this.getAssignableMemberIds(parentTask));
+    }
+
+    getAssignableMembersByParentId(parentTaskId: string): Member[] {
+        const parent = this.appService.parentTasks.find((p) => p.id === parentTaskId);
+        if (!parent) return [];
+        return this.getAssignableMembers(parent);
+    }
+
+    getChildInput(parentId: string): { title: string; assigneeId: string; scheduledDateStr: string; isTodayForNew: boolean } {
         if (!this.childInputs[parentId]) {
-            this.childInputs[parentId] = { title: '', assigneeId: '' };
+            this.childInputs[parentId] = { title: '', assigneeId: '', scheduledDateStr: '', isTodayForNew: false };
         }
         return this.childInputs[parentId];
     }
 
+    toggleChildInputToday(parentId: string): void {
+        const d = this.getChildInput(parentId);
+        d.isTodayForNew = !d.isTodayForNew;
+    }
+
+    newChildTodayPillOn(parentId: string): boolean {
+        const d = this.getChildInput(parentId);
+        return d.isTodayForNew || this.appService.isIsoDateStringToday(d.scheduledDateStr);
+    }
+
+    parentDlClass(task: ParentTask): string {
+        return this.appService.parentDeadlineCardClass(task.deadline);
+    }
+
+    childStatusChipClass(status: TaskStatus): string {
+        return `subtask-status-readonly ${this.statusClass(status)}`;
+    }
+
+    leadMember(task: ParentTask): Member | undefined {
+        return this.appService.getMemberById(task.leadAssigneeId);
+    }
+
+    isMyTask(task: ParentTask): boolean {
+        return this.isMyParent(task);
+    }
+
+    cycleParentFromCard(task: ParentTask, ev: Event): void {
+        ev.stopPropagation();
+        if (this.blockCompletionForParent(task)) return;
+        this.appService.cycleParentTaskStatus(task.id, this.memberId);
+    }
+
+    tooltipForParent(task: ParentTask): string {
+        const d = (task.description || '').trim();
+        return d ? d : '（備考なし）';
+    }
+
+    childSchedRange(task: ParentTask): { min: string; max: string } | null {
+        return this.appService.childScheduledDateRangeIso(task);
+    }
+
+    toDateOnlyIso(val: Date | string | null | undefined): string {
+        if (val === null || val === undefined) return '';
+        const x = new Date(val);
+        if (Number.isNaN(x.getTime())) return '';
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+    }
+
+    formatScheduledShort(val: Date | string | null | undefined): string {
+        const s = this.toDateOnlyIso(val);
+        return s ? s.replace(/-/g, '/') : '';
+    }
+
+    todayCardDlClass(item: TodayItem): string {
+        const dl = item.kind === 'parent' ? item.task.deadline : item.parent.deadline;
+        return this.appService.parentDeadlineCardClass(dl);
+    }
+
     addChildTask(parentTask: ParentTask): void {
         const draft = this.getChildInput(parentTask.id);
-        this.appService.CreateChildTask(this.projectId, parentTask.id, draft.title, draft.assigneeId, false);
+        if (!this.getAssignableMemberIds(parentTask).includes(draft.assigneeId)) {
+            alert('親タスクの担当・メンバーから担当者を選択してください');
+            return;
+        }
+        const sd = draft.scheduledDateStr?.trim() ? draft.scheduledDateStr : null;
+        const effToday =
+            draft.isTodayForNew ||
+            this.appService.isIsoDateStringToday(draft.scheduledDateStr) ||
+            this.appService.isParentDueToday(parentTask.deadline);
+        this.appService.CreateChildTask(
+            this.projectId,
+            parentTask.id,
+            draft.title,
+            draft.assigneeId,
+            effToday,
+            sd,
+            this.memberId
+        );
         draft.title = '';
         draft.assigneeId = '';
+        draft.scheduledDateStr = '';
+        draft.isTodayForNew = false;
     }
 
     deleteParentTask(taskId: string): void {
@@ -320,7 +583,8 @@ export class TodayTasksComponent {
             description: task.description ?? '',
             deadlineInput: this.toDatetimeLocal(task.deadline),
             selectionOrder: task.leadAssigneeId ? [task.leadAssigneeId, ...task.memberIds] : [],
-            isUrgent: task.priority === '高'
+            isUrgent: task.priority === '高',
+            mentionUserIds: [...(task.mentionUserIds ?? [])]
         };
     }
 
@@ -336,14 +600,33 @@ export class TodayTasksComponent {
             alert('タイトルを入力してください');
             return;
         }
-        this.appService.patchParentTask(taskId, {
-            title: d.title,
-            description: d.description,
-            deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
-            priority: d.isUrgent ? '高' : '通常'
-        });
-        this.appService.setParentMemberOrder(taskId, d.selectionOrder);
+        this.appService.saveParentTaskEditBundle(
+            taskId,
+            {
+                title: d.title,
+                description: d.description,
+                deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
+                priority: d.isUrgent ? '高' : '通常',
+                mentionUserIds: [...d.mentionUserIds],
+                selectionOrder: [...d.selectionOrder]
+            },
+            this.memberId
+        );
         this.cancelParentEdit();
+    }
+
+    toggleDraftMention(id: string, checked: boolean): void {
+        const draft = this.parentEditDraft;
+        if (!draft) return;
+        if (checked) {
+            if (!draft.mentionUserIds.includes(id)) draft.mentionUserIds.push(id);
+        } else {
+            draft.mentionUserIds = draft.mentionUserIds.filter((x) => x !== id);
+        }
+    }
+
+    isDraftMentionOn(draft: ParentEditDraft | null, id: string): boolean {
+        return !!draft?.mentionUserIds.includes(id);
     }
 
     onDraftMemberChange(uid: string, checked: boolean): void {
@@ -370,7 +653,11 @@ export class TodayTasksComponent {
         ev?.stopPropagation();
         if (this.parentEditTaskId) this.cancelParentEdit();
         this.childEditId = c.id;
-        this.childEditDraft = { title: c.title, assigneeId: c.assigneeId };
+        this.childEditDraft = {
+            title: c.title,
+            assigneeId: c.assigneeId,
+            scheduledDateStr: this.toDateOnlyIso(c.scheduledDate)
+        };
     }
 
     cancelChildEdit(): void {
@@ -388,7 +675,20 @@ export class TodayTasksComponent {
             alert('担当メンバーを選択してください');
             return;
         }
-        this.appService.patchChildTask(childId, { title: d.title, assigneeId: d.assigneeId });
+        const child = this.appService.childTasks.find((c) => c.id === childId);
+        if (!child || !this.getAssignableMembersByParentId(child.parentTaskId).some((m) => m.uid === d.assigneeId)) {
+            alert('親タスクの担当・メンバーから担当者を選択してください');
+            return;
+        }
+        this.appService.patchChildTask(
+            childId,
+            {
+                title: d.title,
+                assigneeId: d.assigneeId,
+                scheduledDate: d.scheduledDateStr?.trim() ? d.scheduledDateStr : null
+            },
+            { actorMemberUid: this.memberId }
+        );
         this.cancelChildEdit();
     }
 
@@ -413,13 +713,68 @@ export class TodayTasksComponent {
 
     @HostListener('document:click', ['$event'])
     onDocumentClick(ev: MouseEvent): void {
-        if (!this.rightMenuOpen) return;
         const t = ev.target as HTMLElement;
+        if (!t.closest('.mention-toolbar')) {
+            this.mentionPopoverOpen = false;
+        }
+        if (!this.rightMenuOpen) return;
         if (t.closest('.side-drawer') || t.closest('.icon-gear-wrap')) return;
         this.rightMenuOpen = false;
     }
 
     showSiren(item: TodayItem): boolean {
-        return item.kind === 'parent' && item.task.priority === '高';
+        if (item.kind === 'parent') return item.task.priority === '高';
+        return item.parent.priority === '高';
+    }
+
+    private startCharacterBubbleLoop(): void {
+        if (typeof window === 'undefined') return;
+        this.scheduleCharacterBubble();
+    }
+
+    private scheduleCharacterBubble(): void {
+        this.clearCharacterBubbleTimers();
+        const waitMs = 30000 + Math.floor(Math.random() * 30001);
+        this.characterShowTimerId = window.setTimeout(() => {
+            this.characterBubbleText = this.buildCharacterBubbleText();
+            this.characterBubbleVisible = true;
+            const showMs = 4500 + Math.floor(Math.random() * 2501);
+            this.characterHideTimerId = window.setTimeout(() => {
+                this.characterBubbleVisible = false;
+                this.scheduleCharacterBubble();
+            }, showMs);
+        }, waitMs);
+    }
+
+    private clearCharacterBubbleTimers(): void {
+        if (this.characterShowTimerId !== null) {
+            window.clearTimeout(this.characterShowTimerId);
+            this.characterShowTimerId = null;
+        }
+        if (this.characterHideTimerId !== null) {
+            window.clearTimeout(this.characterHideTimerId);
+            this.characterHideTimerId = null;
+        }
+    }
+
+    private buildCharacterBubbleText(): string {
+        const st = this.progress.getMemberState(this.projectId, this.memberId);
+        if (!st?.bubbleShort) {
+            return '今日のタスク、いいペースです。';
+        }
+        if (st.bubbleShort === '停滞中！') {
+            const stagnations = this.progress.openStagnations(this.projectId, this.memberId);
+            const latest = stagnations.length ? stagnations[stagnations.length - 1] : null;
+            const detail = (latest?.reason || st.detailForHover || '停滞理由を整理中です。').trim();
+            return `停滞内容: ${detail}`;
+        }
+        if (st.bubbleShort === '考え中') {
+            const detail = (st.thinkingDetailLong || st.thinkingChatSnippet || st.detailForHover || '考え中です。').trim();
+            return `考え中メモ: ${detail}`;
+        }
+        if (st.bubbleShort === '問題なし' || st.bubbleShort === 'もう終わる') {
+            return '順調です！このまま進めていきましょう。';
+        }
+        return (st.detailForHover || `${st.bubbleShort}で進行中です。`).trim();
     }
 }

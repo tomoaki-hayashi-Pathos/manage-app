@@ -34,13 +34,54 @@
             </div>
 
             <label class="field-label" for="lt-desc">備考欄</label>
-            <textarea id="lt-desc" class="textarea-pill" rows="4" placeholder="備考欄" [(ngModel)]="description" name="ldesc"></textarea>
+            <div class="textarea-mention-wrap">
+                <div class="mention-toolbar" (click)="$event.stopPropagation()">
+                    <button type="button" class="btn-mention" (click)="mentionPopoverOpen = !mentionPopoverOpen">@ メンション</button>
+                    @if (mentionPopoverOpen) {
+                        <div class="mention-popover" role="listbox">
+                            <label class="mention-row">
+                                <input type="checkbox" [checked]="isCreateMentionOn(TOK_ALL)" (change)="toggleCreateMention(TOK_ALL, $any($event.target).checked)" />
+                                全員 (&#64;all)
+                            </label>
+                            <label class="mention-row">
+                                <input type="checkbox" [checked]="isCreateMentionOn(TOK_ADMIN)" (change)="toggleCreateMention(TOK_ADMIN, $any($event.target).checked)" />
+                                管理者 (&#64;admin)
+                            </label>
+                            @for (user of mentionableUsers; track user.uid) {
+                                <label class="mention-row">
+                                    <input type="checkbox" [checked]="isCreateMentionOn(user.uid)" (change)="toggleCreateMention(user.uid, $any($event.target).checked)" />
+                                    {{ user.name }}
+                                </label>
+                            }
+                        </div>
+                    }
+                </div>
+                <textarea id="lt-desc" class="textarea-pill textarea-pill--with-mention" rows="4" placeholder="備考欄" [(ngModel)]="description" name="ldesc"></textarea>
+            </div>
 
             <button type="button" class="btn-confirm" (click)="createParentTask()">確定</button>
+
+            <div class="character-video-dock character-video-dock--sidebar character-video-dock--bubble-above" aria-live="polite">
+                <button type="button" class="character-video-dock__trigger" (click)="openCharacterOlChat()" aria-label="AI相談を開く">
+                    <video class="character-video-dock__video" autoplay loop muted playsinline preload="metadata">
+                        <source [src]="characterVideoSrc" type="video/mp4" />
+                    </video>
+                </button>
+                <div class="character-video-bubble" [class.character-video-bubble--visible]="characterBubbleVisible">
+                    {{ characterBubbleText }}
+                </div>
+            </div>
         </div>
     </aside>
 
     <main class="main-area">
+        <app-progress-member-shell
+            #progressMemberShell
+            [projectId]="projectId"
+            [memberId]="memberId"
+            [parentTasks]="visibleParentTasks"
+            [showOlDock]="false"
+        />
         <header class="project-header card-elevated limit-header">
             <div class="limit-header__titles">
                 <h1 class="project-header__title limit-header__main-title">担当するタスク一覧</h1>
@@ -56,13 +97,17 @@
                 </select>
             </div>
             <div class="icon-gear-wrap">
+                @if (gearNotifyTotal > 0) {
+                    <span class="gear-notify-badge">{{ gearNotifyTotal }}</span>
+                }
                 <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="メニューを開く">⚙</button>
             </div>
         </header>
 
-        <div class="parent-list">
+        <div class="parent-list" cdkDropList (cdkDropListDropped)="onParentDrop($event)">
+            <span class="progress-revision-dummy" aria-hidden="true">{{ progress.progressRevision().t }}</span>
             @for (task of visibleParentTasks; track task.id) {
-                <article class="parent-card card-elevated">
+                <article cdkDrag [ngClass]="'parent-card card-elevated ' + parentDlClass(task)">
                     @if (isMyTask(task)) {
                         <div class="parent-card__toolbar">
                             <button type="button" class="btn-delete" (click)="deleteParentTask(task.id)" title="MYタスクを削除" aria-label="削除">
@@ -95,6 +140,23 @@
                                     <input class="input-pill" [(ngModel)]="ed.title" name="pet-{{ task.id }}" />
                                     <label class="field-label">備考欄（一覧ではホバーで表示）</label>
                                     <textarea class="textarea-pill" rows="3" [(ngModel)]="ed.description" name="ped-{{ task.id }}"></textarea>
+                                    <label class="field-label">メンション</label>
+                                    <div class="member-checkboxes member-checkboxes--wrap">
+                                        <label class="member-check">
+                                            <input type="checkbox" [checked]="isDraftMentionOn(ed, TOK_ALL)" (change)="toggleDraftMention('main', TOK_ALL, $any($event.target).checked)" />
+                                            <span>&#64;all</span>
+                                        </label>
+                                        <label class="member-check">
+                                            <input type="checkbox" [checked]="isDraftMentionOn(ed, TOK_ADMIN)" (change)="toggleDraftMention('main', TOK_ADMIN, $any($event.target).checked)" />
+                                            <span>&#64;admin</span>
+                                        </label>
+                                        @for (user of mentionableUsers; track user.uid) {
+                                            <label class="member-check">
+                                                <input type="checkbox" [checked]="isDraftMentionOn(ed, user.uid)" (change)="toggleDraftMention('main', user.uid, $any($event.target).checked)" />
+                                                <span>{{ user.name }}</span>
+                                            </label>
+                                        }
+                                    </div>
                                     <label class="field-label">担当｜メンバー</label>
                                     <div class="member-checkboxes">
                                         @for (user of users; track user.uid) {
@@ -133,7 +195,7 @@
                                                   </svg>
                                             </span>
                                         }
-                                        <div class="title-box" [attr.title]="tooltipDescription(task)">{{ task.title }}</div>
+                                        <div class="title-box desc-tooltip" [attr.data-tooltip]="tooltipDescription(task)" tabindex="0">{{ task.title }}</div>
                                         <span [class]="statusClass(task.status)">{{ task.status }}</span>
                                     </div>
                                     <p class="edit-hint">クリックして編集</p>
@@ -142,6 +204,8 @@
                                     type="button"
                                     class="btn-parent-today"
                                     [class.btn-parent-today--on]="task.isTodayTask"
+                                    [disabled]="task.isTodayTask && appService.isParentDueToday(task.deadline)"
+                                    [attr.title]="task.isTodayTask && appService.isParentDueToday(task.deadline) ? '期限が今日のため、今日やるを解除できません' : null"
                                     (click)="toggleParentToday(task, $event)"
                                 >
                                     {{ task.isTodayTask ? '今日やる！！' : '今日やる？' }}
@@ -150,21 +214,44 @@
 
                             <div class="avatar-stack-wrap">
                                 <span class="avatar-stack-label">担当・メンバー</span>
-                                <div class="avatar-stack">
-                                    @for (m of membersOrderedForAvatar(task); track m.uid) {
-                                        <div class="avatar-stack__chip" [title]="m.name">
-                                            @if (m.photoURL) {
-                                                <img [src]="m.photoURL" [alt]="m.name" />
-                                            } @else {
-                                                <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
-                                            }
-                                            <span class="avatar-stack__name">{{ m.name }}</span>
-                                        </div>
-                                    } @empty {
-                                        <span class="hint">未設定</span>
-                                    }
+                                <div class="avatar-role-row">
+                                    <span class="avatar-role-label">担当</span>
+                                    <div class="avatar-stack avatar-stack--lead">
+                                        @if (leadMember(task); as lead) {
+                                            <div class="avatar-stack__chip avatar-stack__chip--lead" [title]="lead.name">
+                                                @if (lead.photoURL) {
+                                                    <img [src]="lead.photoURL" [alt]="lead.name" />
+                                                } @else {
+                                                    <span class="avatar-stack__fallback">{{ initials(lead.name) }}</span>
+                                                }
+                                                <span class="avatar-stack__name">{{ lead.name }}</span>
+                                            </div>
+                                        } @else {
+                                            <span class="hint">未設定</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="avatar-role-row">
+                                    <span class="avatar-role-label">メンバー</span>
+                                    <div class="avatar-stack">
+                                        @for (m of memberList(task); track m.uid) {
+                                            <div class="avatar-stack__chip" [title]="m.name">
+                                                @if (m.photoURL) {
+                                                    <img [src]="m.photoURL" [alt]="m.name" />
+                                                } @else {
+                                                    <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                                }
+                                                <span class="avatar-stack__name">{{ m.name }}</span>
+                                            </div>
+                                        } @empty {
+                                            <span class="hint">未設定</span>
+                                        }
+                                    </div>
                                 </div>
                             </div>
+                            @if (appService.getChildTasksByParentId(task.id).length === 0) {
+                                <app-member-progress-bubbles layout="row" [bubbles]="progressBubblesParentOnly(task)" />
+                            }
                         </section>
 
                         <section class="subtask-col">
@@ -172,7 +259,8 @@
                                 <button
                                     type="button"
                                     class="btn-today-pill"
-                                    [class.btn-today-pill--on]="getChildInput(task.id).isTodayForNew"
+                                    [class.btn-today-pill--on]="newChildTodayPillOn(task.id)"
+                                    [disabled]="appService.isParentDueToday(task.deadline) || appService.isIsoDateStringToday(getChildInput(task.id).scheduledDateStr)"
                                     (click)="toggleChildInputToday(task.id)"
                                 >
                                     今日やる？
@@ -186,15 +274,26 @@
                                 />
                                 <select class="select-pill subtask-form__member" [(ngModel)]="getChildInput(task.id).assigneeId" name="cass-{{ task.id }}">
                                     <option value="">担当メンバー</option>
-                                    @for (u of users; track u.uid) {
+                                    @for (u of getAssignableMembers(task); track u.uid) {
                                         <option [value]="u.uid">{{ u.name }}</option>
                                     }
                                 </select>
+                                @if (childSchedRange(task); as rng) {
+                                    <input
+                                        type="date"
+                                        class="input-pill subtask-form__scheduled"
+                                        [min]="rng.min"
+                                        [max]="rng.max"
+                                        [(ngModel)]="getChildInput(task.id).scheduledDateStr"
+                                        name="csched-{{ task.id }}"
+                                        title="実施予定日"
+                                    />
+                                }
                                 <button type="button" class="btn-add" (click)="addChildTask(task)">追加</button>
                             </div>
 
                             <div class="subtask-list">
-                                @for (c of appService.getChildTasksByParentId(task.id); track c.id; let i = $index) {
+                                @for (c of visibleChildRowsForParent(task); track c.id; let i = $index) {
                                     <div class="subtask-flow">
                                         @if (i > 0) {
                                             <div class="flow-arrow" aria-hidden="true"></div>
@@ -204,10 +303,13 @@
                                                 <input class="input-pill subtask-edit-title" [(ngModel)]="cd.title" name="ceti-{{ c.id }}" />
                                                 <select class="select-pill subtask-edit-assign" [(ngModel)]="cd.assigneeId" name="ceas-{{ c.id }}">
                                                     <option value="">担当</option>
-                                                    @for (u of users; track u.uid) {
+                                                    @for (u of getAssignableMembers(task); track u.uid) {
                                                         <option [value]="u.uid">{{ u.name }}</option>
                                                     }
                                                 </select>
+                                                @if (childSchedRange(task); as rng2) {
+                                                    <input type="date" class="input-pill subtask-edit-scheduled" [(ngModel)]="cd.scheduledDateStr" [min]="rng2.min" [max]="rng2.max" name="cds-{{ c.id }}" title="実施予定日" />
+                                                }
                                                 <button type="button" class="btn-inline-save btn-inline-save--small" (click)="saveChildEdit(c.id)">保存</button>
                                                 <button type="button" class="btn-inline-cancel btn-inline-cancel--small" (click)="cancelChildEdit()">戻る</button>
                                             </div>
@@ -218,29 +320,52 @@
                                                     'subtask-item--todo': c.status === '未着手',
                                                     'subtask-item--prog': c.status === '進行中',
                                                     'subtask-item--done': c.status === '完了',
-                                                    'subtask-item--today': c.isTodayTask
+                                                    'subtask-item--today': appService.childTodayPillVisualOn(task, c)
                                                 }"
                                             >
                                                 <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
-                                                <span class="subtask-item__title subtask-item__title--click" (click)="enterChildEdit(c, $event)">{{ c.title }}</span>
-                                                <button type="button" class="btn-today-pill btn-today-pill--row" [class.btn-today-pill--on]="c.isTodayTask" (click)="toggleChildToday(c, $event)">今日やる？</button>
-                                                <button type="button" class="subtask-assign-hit" (click)="enterChildEdit(c, $event)" title="担当を編集">
-                                                    @if (appService.getMemberById(c.assigneeId); as cm) {
-                                                        <span class="subtask-item__avatar">
-                                                            @if (cm.photoURL) {
-                                                                <img [src]="cm.photoURL" [alt]="cm.name" />
-                                                            } @else {
-                                                                <span class="subtask-item__avatar-fallback">{{ initials(cm.name) }}</span>
-                                                            }
-                                                        </span>
+                                                <span class="subtask-item__title subtask-item__title--click" (click)="enterChildEdit(c, $event)"
+                                                    >{{ c.title }}
+                                                    @if (formatScheduledShort(c.scheduledDate)) {
+                                                        <span class="subtask-scheduled-chip"> 📅 {{ formatScheduledShort(c.scheduledDate) }}</span>
                                                     }
-                                                </button>
+                                                </span>
+                                                @if (c.assigneeId === memberId) {
+                                                    <button
+                                                        type="button"
+                                                        class="btn-today-pill btn-today-pill--row"
+                                                        [class.btn-today-pill--on]="appService.childTodayPillVisualOn(task, c)"
+                                                        [disabled]="appService.childTodayAutoOn(task, c)"
+                                                        (click)="toggleChildToday(c, $event)"
+                                                    >
+                                                        今日やる？
+                                                    </button>
+                                                }
+                                                <div class="subtask-progress-stack">
+                                                    <app-member-progress-bubbles layout="inline" [showAvatar]="false" [bubbles]="progressBubblesForChild(task, c)" />
+                                                    <button type="button" class="subtask-assign-hit" (click)="enterChildEdit(c, $event)" title="担当を編集">
+                                                        @if (appService.getMemberById(c.assigneeId); as cm) {
+                                                            <span class="subtask-item__avatar">
+                                                                @if (cm.photoURL) {
+                                                                    <img [src]="cm.photoURL" [alt]="cm.name" />
+                                                                } @else {
+                                                                    <span class="subtask-item__avatar-fallback">{{ initials(cm.name) }}</span>
+                                                                }
+                                                            </span>
+                                                        }
+                                                    </button>
+                                                </div>
                                                 <button type="button" class="btn-delete btn-delete--small" (click)="deleteChildTask(c.id)" title="子タスクを削除" aria-label="削除">
                                                     <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
                                                 </button>
                                             </div>
                                         }
                                     </div>
+                                }
+                                @if (moreSubtasksHiddenCount(task) > 0) {
+                                    <button type="button" class="subtasks-expand-toggle" (click)="toggleSubtasksExpand(task.id, $event)">
+                                        {{ isSubtasksExpanded(task.id) ? '▲ 折りたたむ' : '▼ 他' + moreSubtasksHiddenCount(task) + '件を表示' }}
+                                    </button>
                                 }
                             </div>
                         </section>
@@ -257,12 +382,9 @@
     }
     <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen" aria-label="メニュー">
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
-        <nav class="side-drawer__nav">
-            <!--今日やることこと一覧ページ、期限未設定タスク一覧ページ、完了タスク一覧ページ、共有ページ-->
-            <a [routerLink]="['/member/today-tasks', projectId, memberId ]" class="side-drawer__item" (click)="closeRightMenu()">今日やること！</a>
-            <a [routerLink]="['/member/not-set-tasks', projectId, memberId]" class="side-drawer__item" (click)="closeRightMenu()">期限が設定されてないタスク</a>
-            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">終わったタスク</a>
-            <a [routerLink]="['/admin/create-member', projectId]" class="side-drawer__item" (click)="closeRightMenu()">共有タスク</a>
+        <nav class="side-drawer__nav side-drawer__nav--member">
+            <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
         </nav>
     </aside>
+
 </div>

@@ -1,19 +1,19 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import { ParentTask, WorkingTaskState } from '../../core/interface';
+import { MemberNavLinksComponent } from './member-nav-links';
 
 @Component({
     selector: 'app-not-set-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, RouterLink],
+    imports: [FormsModule, CommonModule, MemberNavLinksComponent],
     templateUrl: './not-set-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './not-set-tasks.css']
 })
-export class NotSetTasksComponent {
+export class NotSetTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
 
@@ -32,6 +32,20 @@ export class NotSetTasksComponent {
     /** 一括確定処理中 */
     isSaving = false;
 
+    ngOnInit(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'not-set');
+        this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'not-set');
+    }
+
+    ngOnDestroy(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, null);
+    }
+
+    get gearNotifyTotal(): number {
+        void this.appService.notificationTick();
+        return this.appService.getMemberGearNotificationTotal(this.projectId, this.memberId);
+    }
+
     get memberDisplayName(): string {
         return this.appService.getMemberById(this.memberId)?.name ?? '';
     }
@@ -44,19 +58,42 @@ export class NotSetTasksComponent {
         return Number.isNaN(t.getTime());
     }
 
-    /** 一覧対象: 自分が担当かつ期限なしかつ「今日やる」のみ未整理（isTodayTask で今日ページへ振り分け済みは除外） */
+    /** 一覧対象: 自分がリードまたはメンバーに含まれ、期限なし・「今日やる」未振り分けのもの */
     get eligibleParents(): ParentTask[] {
         return this.appService.parentTasks.filter(
             (t) =>
                 t.projectId === this.projectId &&
-                t.leadAssigneeId === this.memberId &&
+                (t.leadAssigneeId === this.memberId || t.memberIds.includes(this.memberId)) &&
                 NotSetTasksComponent.deadlineUnset(t.deadline) &&
                 !t.isTodayTask
         );
     }
 
+    /** リード本人なら true（編集UIの出し分け／確定の安全弁に使用） */
+    isLead(task: ParentTask): boolean {
+        return task.leadAssigneeId === this.memberId;
+    }
+
+    /** リード担当者の Member（未設定なら undefined） */
+    leadMember(task: ParentTask) {
+        return task.leadAssigneeId ? this.appService.getMemberById(task.leadAssigneeId) : undefined;
+    }
+
+    initials(name: string | undefined | null): string {
+        const s = (name ?? '').trim();
+        if (!s) return '';
+        return s.slice(0, 2);
+    }
+
+    private sortEligibleParents(a: ParentTask, b: ParentTask): number {
+        const pr = a.priority === '高' ? 0 : 1;
+        const qr = b.priority === '高' ? 0 : 1;
+        if (pr !== qr) return pr - qr;
+        return (a.title || '').localeCompare(b.title || '', 'ja');
+    }
+
     get parentTasksForFilter(): ParentTask[] {
-        return [...this.eligibleParents].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+        return [...this.eligibleParents].sort((a, b) => this.sortEligibleParents(a, b));
     }
 
     get visibleParents(): ParentTask[] {
@@ -64,7 +101,7 @@ export class NotSetTasksComponent {
         if (this.parentTaskFilterId !== 'all') {
             list = list.filter((t) => t.id === this.parentTaskFilterId);
         }
-        return list.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+        return list.sort((a, b) => this.sortEligibleParents(a, b));
     }
 
     toggleToday(task: ParentTask): void {
@@ -89,6 +126,11 @@ export class NotSetTasksComponent {
         return w.isToday || hasDate;
     }
 
+    /** 一覧内に確定対象が 1 件でもあるか（ボタンの活性判定） */
+    get hasAnyPendingChange(): boolean {
+        return this.eligibleParents.some((t) => this.hasPendingChange(t));
+    }
+
 //---------------------------------------修正版-------------------------------
     confirmAll(): void {
         const targets = this.eligibleParents.filter((t) => this.hasPendingChange(t));
@@ -102,6 +144,7 @@ export class NotSetTasksComponent {
                 for (const task of targets) {
                     const w = this.working[task.id];
                     if (!w) continue;
+                    if (!this.isLead(task)) continue;
     
                     const hasDate = !!w.deadlineInput?.trim();
                     const today = w.isToday;
@@ -120,10 +163,14 @@ export class NotSetTasksComponent {
                     }
     
                     // 1. 親タスクの更新
-                    this.appService.patchParentTask(task.id, {
-                        isTodayTask: today,
-                        deadline: finalDeadline
-                    });
+                    this.appService.patchParentTask(
+                        task.id,
+                        {
+                            isTodayTask: today,
+                            deadline: finalDeadline
+                        },
+                        { actorMemberUid: this.memberId }
+                    );
 
     
                     delete this.working[task.id];

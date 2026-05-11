@@ -16,9 +16,20 @@ export interface Project {
 
 
 
+/** メンバー画面の設定メニュー別・通知カウント用 */
+export type MemberNavPageKey = 'today' | 'limit' | 'not-set' | 'completed' | 'shared';
+
+/** 管理画面のドロワー・通知カウント用 */
+export type AdminNavPageKey = 'shared' | 'completed';
+
 export type TaskStatus = '未着手' | '進行中' | '完了';
 
 export type Priority = '高' | '通常';
+
+/** メンション宛先として mentionUserIds に格納するトークン */
+export const MENTION_ALL = '@all';
+
+export const MENTION_ADMIN = '@admin';
 
 
 
@@ -50,6 +61,7 @@ export interface ParentTask {
 
     description: string,
 
+    /** メンションがある場合 true（mentionUserIds を基準に更新） */
     isShared: boolean,
 
     isDraft: boolean,
@@ -59,6 +71,17 @@ export interface ParentTask {
 
     //今日やるタスク
     isTodayTask: boolean,
+
+    /** 共有メンション先（個別UID / @all / @admin） */
+    mentionUserIds: string[],
+
+    /** 一覧の並び順（小さいほど上） */
+    displayOrder?: number,
+    /** today-tasks 専用のメンバー別並び順 */
+    todayDisplayOrder?: Record<string, number>,
+
+    /** 完了にした操作者のUID */
+    completedBy?: string,
 
     //タスク完了時間
     completedAt?: string;
@@ -89,9 +112,30 @@ export interface ChildTask {
     //今日やるタスク
     isTodayTask: boolean,
 
+    /** 実施予定日（日単位。「いつやるか」／親の期限内のみ） */
+    scheduledDate?: Date | null | string,
+    /** today-tasks 専用のメンバー別並び順 */
+    todayDisplayOrder?: Record<string, number>,
+
     //タスク完了時間
     completedAt?: string;
 
+}
+
+
+
+/** 明示的な親／子ステータス変更のログ（AI コンテキスト・履歴表示用） */
+export interface TaskStatusChangeLogEntry {
+    id: string;
+    at: number;
+    projectId: string;
+    kind: 'parent' | 'child';
+    taskId: string;
+    parentTaskId: string;
+    title: string;
+    fromStatus: TaskStatus;
+    toStatus: TaskStatus;
+    actorMemberUid?: string | null;
 }
 
 
@@ -107,9 +151,17 @@ export interface Member {
     email: string,
 
     photoURL: string,
-    //ログイン機能ができるまでは管理者は空白でいく
-    role: '' | 'メンバー' | 'ゲスト'
+    // ロール（管理画面アクセス可否の判定にも利用）
+    role: '' | '管理者' | 'メンバー' | 'ゲスト'
 
+}
+
+export interface PendingLoginMember {
+    uid: string,
+    name: string,
+    email: string,
+    photoURL: string,
+    requestedAt: number
 }
 
 /** 期限未設定ページで「確定」前に保持する編集状態（AppService の実データは確定まで変更しない） */

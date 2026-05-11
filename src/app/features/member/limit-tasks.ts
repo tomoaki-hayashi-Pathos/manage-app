@@ -1,10 +1,15 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
-import { ParentTask, Member, TaskStatus, ChildTask } from '../../core/interface';
+import { ParentTask, Member, TaskStatus, ChildTask, MENTION_ALL, MENTION_ADMIN } from '../../core/interface';
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
+import { MemberNavLinksComponent } from './member-nav-links';
+import { ProgressReportingService } from '../../services/progress-reporting.service';
+import { AiChatService } from '../../services/ai-chat.service';
+import { ProgressMemberShellComponent } from '../../shared/progress-member-shell/progress-member-shell.component';
+import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
 
 type ParentEditDraft = {
     title: string;
@@ -12,25 +17,40 @@ type ParentEditDraft = {
     deadlineInput: string;
     selectionOrder: string[];
     isUrgent: boolean;
+    mentionUserIds: string[];
 };
 
-type ChildEditDraft = { title: string; assigneeId: string };
+type ChildEditDraft = { title: string; assigneeId: string; scheduledDateStr: string };
 
 @Component({
     selector: 'app-limit-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, RouterLink],
+    imports: [
+        FormsModule,
+        CommonModule,
+        DragDropModule,
+        MemberNavLinksComponent,
+        ProgressMemberShellComponent,
+        MemberProgressBubblesComponent
+    ],
     templateUrl: './limit-tasks.html',
-    styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css']
+    styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', '../../progress-ai.css']
 })
-export class LimitTasksComponent {
+export class LimitTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
+    readonly progress = inject(ProgressReportingService);
+    readonly aiChat = inject(AiChatService);
 
     readonly projectId = this.route.snapshot.params['projectId'] as string;
     readonly memberId = this.route.snapshot.params['memberId'] as string;
 
     projectName = this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    readonly characterVideoSrc = 'assets/character-typing.mp4';
+    characterBubbleVisible = false;
+    characterBubbleText = '';
+    private characterShowTimerId: number | null = null;
+    private characterHideTimerId: number | null = null;
 
     title = '';
     deadlineInput = '';
@@ -39,11 +59,49 @@ export class LimitTasksComponent {
     /** 左フォーム：確定時に親の isTodayTask に反映 */
     isCreateToday = false;
 
+    mentionPopoverOpen = false;
+    mentionUserIds: string[] = [];
+    readonly TOK_ALL = MENTION_ALL;
+    readonly TOK_ADMIN = MENTION_ADMIN;
+
     parentTaskFilterId: string | 'all' = 'all';
     viewMode = 0;
     incompleteSectionOpen = false;
 
-    childInputs: Record<string, { title: string; assigneeId: string; isTodayForNew: boolean }> = {};
+    childInputs: Record<string, { title: string; assigneeId: string; isTodayForNew: boolean; scheduledDateStr: string }> = {};
+
+    /** 親の子一覧が 3 件以上のときの折りたたみ（today と同仕様） */
+    expandedSubChildren: Record<string, boolean> = {};
+
+    ngOnInit(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'limit');
+        this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'limit');
+        this.startCharacterBubbleLoop();
+    }
+
+    ngOnDestroy(): void {
+        this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, null);
+        this.clearCharacterBubbleTimers();
+    }
+
+    openCharacterOlChat(): void {
+        this.aiChat.openChat(this.projectId, this.memberId);
+        this.progress.onAiSessionStarted(this.projectId, this.memberId);
+    }
+
+    progressBubblesForChild(task: ParentTask, child: ChildTask) {
+        return this.progress.bubblesForChildRow(this.projectId, task, child.id, null, child.assigneeId ?? null);
+    }
+
+    progressBubblesParentOnly(task: ParentTask) {
+        return this.progress.bubblesForParentOnly(this.projectId, task, null);
+    }
+
+
+    get gearNotifyTotal(): number {
+        void this.appService.notificationTick();
+        return this.appService.getMemberGearNotificationTotal(this.projectId, this.memberId);
+    }
 
     rightMenuOpen = false;
     parentEditTaskId: string | null = null;
@@ -57,25 +115,30 @@ export class LimitTasksComponent {
         return this.appService.getMembersByProjectId(this.projectId);
     }
 
+    get mentionableUsers(): Member[] {
+        return this.users.filter((u) => u.uid !== this.memberId);
+    }
+
     get memberDisplayName(): string {
         return this.appService.getMemberById(this.memberId)?.name ?? '';
     }
 
     /** このメンバーが関与する親タスクのみ */
     isTaskVisibleToMember(t: ParentTask): boolean {
+        if (this.appService.isPrivateMyHiddenFromOtherMember(t, this.memberId)) return false;
         if (t.leadAssigneeId === this.memberId) return true;
         if (t.memberIds.includes(this.memberId)) return true;
         return this.appService.getChildTasksByParentId(t.id).some((c) => c.assigneeId === this.memberId);
     }
 
-    /** MY = 担当責任者 or 作成者 */
+    /** MY = 作成者(createdById)のみ */
     isMyTask(task: ParentTask): boolean {
-        if (task.leadAssigneeId === this.memberId) return true;
         return task.createdById === this.memberId;
     }
 
     get parentTasksForFilter(): ParentTask[] {
         return [...this.appService.getAllParentTasksForProject(this.projectId)]
+            .filter((t) => !t.isDraft)
             .filter((t) => this.isTaskVisibleToMember(t))
             .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
     }
@@ -124,9 +187,35 @@ export class LimitTasksComponent {
         d.isTodayForNew = !d.isTodayForNew;
     }
 
-    getChildInput(parentId: string): { title: string; assigneeId: string; isTodayForNew: boolean } {
+    toggleSubtasksExpand(parentId: string, ev: Event): void {
+        ev.stopPropagation();
+        this.expandedSubChildren[parentId] = !this.expandedSubChildren[parentId];
+    }
+
+    isSubtasksExpanded(parentId: string): boolean {
+        return !!this.expandedSubChildren[parentId];
+    }
+
+    visibleChildRowsForParent(parent: ParentTask): ChildTask[] {
+        const all = this.appService.getChildTasksByParentId(parent.id);
+        if (all.length < 3) return all;
+        if (this.isSubtasksExpanded(parent.id)) return all;
+        return all.slice(0, 2);
+    }
+
+    moreSubtasksHiddenCount(parent: ParentTask): number {
+        const n = this.appService.getChildTasksByParentId(parent.id).length;
+        return n >= 3 ? n - 2 : 0;
+    }
+
+    getChildInput(parentId: string): {
+        title: string;
+        assigneeId: string;
+        isTodayForNew: boolean;
+        scheduledDateStr: string;
+    } {
         if (!this.childInputs[parentId]) {
-            this.childInputs[parentId] = { title: '', assigneeId: '', isTodayForNew: false };
+            this.childInputs[parentId] = { title: '', assigneeId: '', isTodayForNew: false, scheduledDateStr: '' };
         }
         return this.childInputs[parentId];
     }
@@ -144,30 +233,59 @@ export class LimitTasksComponent {
             this.isUrgent,
             this.memberId,
             [],
-            false,
             this.description,
             this.isCreateToday,
-            this.memberId
+            this.memberId,
+            this.mentionUserIds
         );
         this.title = '';
         this.deadlineInput = '';
         this.isUrgent = false;
         this.description = '';
         this.isCreateToday = false;
+        this.mentionUserIds = [];
+        this.mentionPopoverOpen = false;
+    }
+
+    toggleCreateMention(id: string, checked: boolean): void {
+        if (checked) {
+            if (!this.mentionUserIds.includes(id)) this.mentionUserIds.push(id);
+        } else {
+            this.mentionUserIds = this.mentionUserIds.filter((x) => x !== id);
+        }
+    }
+
+    isCreateMentionOn(id: string): boolean {
+        return this.mentionUserIds.includes(id);
+    }
+
+    newChildTodayPillOn(parentId: string): boolean {
+        const d = this.getChildInput(parentId);
+        return d.isTodayForNew || this.appService.isIsoDateStringToday(d.scheduledDateStr);
     }
 
     addChildTask(parentTask: ParentTask): void {
         const draft = this.getChildInput(parentTask.id);
+        if (!this.getAssignableMemberIds(parentTask).includes(draft.assigneeId)) {
+            alert('親タスクの担当・メンバーから担当者を選択してください');
+            return;
+        }
+        const sd = draft.scheduledDateStr?.trim() ? draft.scheduledDateStr : null;
+        const effToday = draft.isTodayForNew || this.appService.isIsoDateStringToday(draft.scheduledDateStr);
+
         this.appService.CreateChildTask(
             this.projectId,
             parentTask.id,
             draft.title,
             draft.assigneeId,
-            draft.isTodayForNew
+            effToday,
+            sd,
+            this.memberId
         );
         draft.title = '';
         draft.assigneeId = '';
         draft.isTodayForNew = false;
+        draft.scheduledDateStr = '';
     }
 
     leadMember(task: ParentTask): Member | undefined {
@@ -181,6 +299,21 @@ export class LimitTasksComponent {
     membersOrderedForAvatar(task: ParentTask): Member[] {
         const ids = task.leadAssigneeId ? [task.leadAssigneeId, ...task.memberIds] : [...task.memberIds];
         return this.appService.getMembersByUids(ids);
+    }
+
+    getAssignableMemberIds(parentTask: ParentTask): string[] {
+        const ids = parentTask.leadAssigneeId ? [parentTask.leadAssigneeId, ...parentTask.memberIds] : [...parentTask.memberIds];
+        return [...new Set(ids)];
+    }
+
+    getAssignableMembers(parentTask: ParentTask): Member[] {
+        return this.appService.getMembersByUids(this.getAssignableMemberIds(parentTask));
+    }
+
+    getAssignableMembersByParentId(parentTaskId: string): Member[] {
+        const parent = this.appService.parentTasks.find((p) => p.id === parentTaskId);
+        if (!parent) return [];
+        return this.getAssignableMembers(parent);
     }
 
     formatDeadline(deadline: Date | string | null): string {
@@ -245,6 +378,35 @@ export class LimitTasksComponent {
         this.rightMenuOpen = false;
     }
 
+    parentDlClass(task: ParentTask): string {
+        return this.appService.parentDeadlineCardClass(task.deadline);
+    }
+
+    childSchedRange(task: ParentTask): { min: string; max: string } | null {
+        return this.appService.childScheduledDateRangeIso(task);
+    }
+
+    toDateOnlyIso(val: Date | string | null | undefined): string {
+        if (val === null || val === undefined) return '';
+        const x = new Date(val);
+        if (Number.isNaN(x.getTime())) return '';
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+    }
+
+    formatScheduledShort(val: Date | string | null | undefined): string {
+        const s = this.toDateOnlyIso(val);
+        return s ? s.replace(/-/g, '/') : '';
+    }
+
+    onParentDrop(ev: CdkDragDrop<void>): void {
+        const list = [...this.visibleParentTasks];
+        if (ev.previousIndex === ev.currentIndex) return;
+        moveItemInArray(list, ev.previousIndex, ev.currentIndex);
+        this.appService.applyParentTaskReorder(this.projectId, list);
+        this.appService.notifyTaskListReordered(this.projectId, this.memberId);
+    }
+
     initials(name: string): string {
         return name.trim().slice(0, 2);
     }
@@ -262,7 +424,8 @@ export class LimitTasksComponent {
             description: task.description ?? '',
             deadlineInput: this.toDatetimeLocal(task.deadline),
             selectionOrder: task.leadAssigneeId ? [task.leadAssigneeId, ...task.memberIds] : [],
-            isUrgent: task.priority === '高'
+            isUrgent: task.priority === '高',
+            mentionUserIds: [...(task.mentionUserIds ?? [])]
         };
     }
 
@@ -287,14 +450,33 @@ export class LimitTasksComponent {
             alert('タイトルを入力してください');
             return;
         }
-        this.appService.patchParentTask(taskId, {
-            title: d.title,
-            description: d.description,
-            deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
-            priority: d.isUrgent ? '高' : '通常'
-        });
-        this.appService.setParentMemberOrder(taskId, d.selectionOrder);
+        this.appService.saveParentTaskEditBundle(
+            taskId,
+            {
+                title: d.title,
+                description: d.description,
+                deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
+                priority: d.isUrgent ? '高' : '通常',
+                mentionUserIds: [...d.mentionUserIds],
+                selectionOrder: [...d.selectionOrder]
+            },
+            this.memberId
+        );
         this.cancelParentEdit();
+    }
+
+    toggleDraftMention(ctx: 'main' | 'sidebar', id: string, checked: boolean): void {
+        const draft = ctx === 'main' ? this.parentEditDraft : this.sidebarIncompleteDraft;
+        if (!draft) return;
+        if (checked) {
+            if (!draft.mentionUserIds.includes(id)) draft.mentionUserIds.push(id);
+        } else {
+            draft.mentionUserIds = draft.mentionUserIds.filter((x) => x !== id);
+        }
+    }
+
+    isDraftMentionOn(draft: ParentEditDraft | null, id: string): boolean {
+        return !!draft?.mentionUserIds.includes(id);
     }
 
     onDraftMemberChange(ctx: 'main' | 'sidebar', uid: string, checked: boolean): void {
@@ -326,7 +508,11 @@ export class LimitTasksComponent {
         ev?.stopPropagation();
         if (this.parentEditTaskId) this.cancelParentEdit();
         this.childEditId = c.id;
-        this.childEditDraft = { title: c.title, assigneeId: c.assigneeId };
+        this.childEditDraft = {
+            title: c.title,
+            assigneeId: c.assigneeId,
+            scheduledDateStr: this.toDateOnlyIso(c.scheduledDate)
+        };
     }
 
     cancelChildEdit(): void {
@@ -344,7 +530,20 @@ export class LimitTasksComponent {
             alert('担当メンバーを選択してください');
             return;
         }
-        this.appService.patchChildTask(childId, { title: d.title, assigneeId: d.assigneeId });
+        const child = this.appService.childTasks.find((c) => c.id === childId);
+        if (!child || !this.getAssignableMembersByParentId(child.parentTaskId).some((m) => m.uid === d.assigneeId)) {
+            alert('親タスクの担当・メンバーから担当者を選択してください');
+            return;
+        }
+        this.appService.patchChildTask(
+            childId,
+            {
+                title: d.title,
+                assigneeId: d.assigneeId,
+                scheduledDate: d.scheduledDateStr?.trim() ? d.scheduledDateStr : null
+            },
+            { actorMemberUid: this.memberId }
+        );
         this.cancelChildEdit();
     }
 
@@ -356,12 +555,34 @@ export class LimitTasksComponent {
 
     toggleParentToday(task: ParentTask, ev: MouseEvent): void {
         ev.stopPropagation();
-        this.appService.toggleParentTodayTask(task.id);
+        const wasOn = task.isTodayTask;
+        this.appService.toggleParentTodayTask(task.id, this.memberId);
+        const p = this.appService.parentTasks.find((x) => x.id === task.id);
+        if (wasOn && p && !p.isTodayTask) {
+            const ids = this.progress
+                .openStagnations(this.projectId, this.memberId)
+                .filter((s) => s.parentTaskId === task.id)
+                .map((s) => s.id);
+            if (ids.length) {
+                this.progress.resolveStagnation(this.projectId, this.memberId, ids);
+            }
+        }
     }
 
     toggleChildToday(c: ChildTask, ev: MouseEvent): void {
         ev.stopPropagation();
-        this.appService.toggleChildTodayTask(c.id);
+        const wasOn = c.isTodayTask;
+        this.appService.toggleChildTodayTask(c.id, this.memberId);
+        const fresh = this.appService.childTasks.find((x) => x.id === c.id);
+        if (wasOn && fresh && !fresh.isTodayTask) {
+            const ids = this.progress
+                .openStagnations(this.projectId, this.memberId)
+                .filter((s) => s.parentTaskId === c.parentTaskId && s.childTaskId === c.id)
+                .map((s) => s.id);
+            if (ids.length) {
+                this.progress.resolveStagnation(this.projectId, this.memberId, ids);
+            }
+        }
     }
 
     startSidebarIncompleteEdit(task: ParentTask): void {
@@ -383,13 +604,18 @@ export class LimitTasksComponent {
             alert('タイトルを入力してください');
             return;
         }
-        this.appService.patchParentTask(taskId, {
-            title: d.title,
-            description: d.description,
-            deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
-            priority: d.isUrgent ? '高' : '通常'
-        });
-        this.appService.setParentMemberOrder(taskId, d.selectionOrder);
+        this.appService.saveParentTaskEditBundle(
+            taskId,
+            {
+                title: d.title,
+                description: d.description,
+                deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
+                priority: d.isUrgent ? '高' : '通常',
+                mentionUserIds: [...d.mentionUserIds],
+                selectionOrder: [...d.selectionOrder]
+            },
+            this.memberId
+        );
         this.cancelSidebarIncompleteEdit();
     }
 
@@ -404,13 +630,67 @@ export class LimitTasksComponent {
 
     @HostListener('document:click', ['$event'])
     onDocumentClick(ev: MouseEvent): void {
-        if (!this.rightMenuOpen) return;
         const t = ev.target as HTMLElement;
+        if (!t.closest('.mention-toolbar')) {
+            this.mentionPopoverOpen = false;
+        }
+        if (!this.rightMenuOpen) return;
         if (t.closest('.side-drawer') || t.closest('.icon-gear-wrap')) return;
         this.rightMenuOpen = false;
     }
 
     isMemberCheckedInDraft(draft: ParentEditDraft | null, uid: string): boolean {
         return !!draft?.selectionOrder.includes(uid);
+    }
+
+    private startCharacterBubbleLoop(): void {
+        if (typeof window === 'undefined') return;
+        this.scheduleCharacterBubble();
+    }
+
+    private scheduleCharacterBubble(): void {
+        this.clearCharacterBubbleTimers();
+        const waitMs = 30000 + Math.floor(Math.random() * 30001);
+        this.characterShowTimerId = window.setTimeout(() => {
+            this.characterBubbleText = this.buildCharacterBubbleText();
+            this.characterBubbleVisible = true;
+            const showMs = 4500 + Math.floor(Math.random() * 2501);
+            this.characterHideTimerId = window.setTimeout(() => {
+                this.characterBubbleVisible = false;
+                this.scheduleCharacterBubble();
+            }, showMs);
+        }, waitMs);
+    }
+
+    private clearCharacterBubbleTimers(): void {
+        if (this.characterShowTimerId !== null) {
+            window.clearTimeout(this.characterShowTimerId);
+            this.characterShowTimerId = null;
+        }
+        if (this.characterHideTimerId !== null) {
+            window.clearTimeout(this.characterHideTimerId);
+            this.characterHideTimerId = null;
+        }
+    }
+
+    private buildCharacterBubbleText(): string {
+        const st = this.progress.getMemberState(this.projectId, this.memberId);
+        if (!st?.bubbleShort) {
+            return '今日も一歩ずつ、進めていきましょう。';
+        }
+        if (st.bubbleShort === '停滞中！') {
+            const stagnations = this.progress.openStagnations(this.projectId, this.memberId);
+            const latest = stagnations.length ? stagnations[stagnations.length - 1] : null;
+            const detail = (latest?.reason || st.detailForHover || '停滞理由を整理中です。').trim();
+            return `停滞内容: ${detail}`;
+        }
+        if (st.bubbleShort === '考え中') {
+            const detail = (st.thinkingDetailLong || st.thinkingChatSnippet || st.detailForHover || '考え中です。').trim();
+            return `考え中メモ: ${detail}`;
+        }
+        if (st.bubbleShort === '問題なし' || st.bubbleShort === 'もう終わる') {
+            return '順調です！この調子でいきましょう。';
+        }
+        return (st.detailForHover || `${st.bubbleShort}で進行中です。`).trim();
     }
 }

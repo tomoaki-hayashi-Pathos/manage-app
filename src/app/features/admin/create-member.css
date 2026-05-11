@@ -114,6 +114,13 @@
     margin-top: 1.5rem;
 }
 
+.member-check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0;
+}
+
 .btn {
     display: inline-flex;
     align-items: center;

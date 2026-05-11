@@ -1,0 +1,45 @@
+.stagnation-parent-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 12rem;
+    overflow: auto;
+    margin: 0.35rem 0 0.65rem;
+    padding: 0.35rem 0;
+}
+
+.stagnation-check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.stagnation-check-row input {
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+}
+
+.progress-shell-modal__consult-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.progress-shell-modal__consult-head h3 {
+    margin: 0;
+}
+
+.btn-stagnation-report--compact {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    padding: 0.35rem 0.65rem;
+}
+
+.stagnation-check-row--radio {
+    align-items: center;
+}

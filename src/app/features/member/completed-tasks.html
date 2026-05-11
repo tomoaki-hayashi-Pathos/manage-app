@@ -1,0 +1,122 @@
+<div class="manage-shell completed-tasks-page">
+    <main class="main-area ct-main">
+        <header class="project-header card-elevated ct-header">
+            <div class="ct-header__titles">
+                <h1 class="project-header__title ct-header__title">完了したタスク</h1>
+                <p class="ct-header__sub">
+                    {{ projectName || 'プロジェクト' }}
+                    @if (memberId) {
+                        <span> · {{ memberDisplayName }}</span>
+                    }
+                </p>
+            </div>
+            <button type="button" class="ct-btn-revert" [disabled]="selectedIds.length === 0" (click)="revertBulk()" title="未完了に戻す">
+                <span class="ct-btn-revert__icon" aria-hidden="true">☑</span>
+                未完了に戻す
+            </button>
+            <div class="project-header__filter">
+                <span class="filter-label">タスク絞り込み</span>
+                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="ctf">
+                    <option [ngValue]="'all'">タスクを選んでください</option>
+                    @for (t of parentTasksForFilter; track t.id) {
+                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
+                    }
+                </select>
+            </div>
+            @if (isAdminView) {
+                <button type="button" class="ct-header-delete" (click)="deleteAllCompletedLogs()" title="全完了ログ削除" aria-label="全完了ログ削除">
+                    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                        <path
+                            fill="currentColor"
+                            d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"
+                        />
+                    </svg>
+                </button>
+            }
+            <div class="icon-gear-wrap">
+                @if (gearNotifyTotal > 0) {
+                    <span class="gear-notify-badge">{{ gearNotifyTotal }}</span>
+                }
+                <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">⚙</button>
+            </div>
+        </header>
+
+        @if (completedList.length === 0) {
+            <div class="ct-empty card-elevated">
+                <svg class="ct-hedgehog" viewBox="0 0 120 120" aria-hidden="true">
+                    <ellipse cx="60" cy="68" rx="44" ry="38" fill="#bcaaa4" />
+                    <ellipse cx="60" cy="62" rx="36" ry="30" fill="#d7ccc8" />
+                    <circle cx="48" cy="58" r="4" fill="#333" />
+                    <circle cx="72" cy="58" r="4" fill="#333" />
+                    <ellipse cx="60" cy="68" rx="6" ry="4" fill="#333" />
+                    <path d="M28 52 L22 38 L32 44 Z M92 52 L98 38 L88 44 Z M38 40 L34 26 L44 34 Z M82 40 L86 26 L76 34 Z" fill="#8d6e63" />
+                </svg>
+                <p class="ct-empty__msg">完了したタスクはまだありません。今日も一日頑張りましょう！</p>
+            </div>
+        } @else {
+            <div class="ct-list">
+                @for (task of visibleCompleted; track task.id) {
+                    <article class="ct-card card-elevated">
+                        <label class="ct-check-wrap">
+                            <input type="checkbox" [checked]="isSelected(task.id)" (change)="toggleSelect(task.id, $any($event.target).checked)" />
+                        </label>
+                        <div class="ct-card__body">
+                            <div class="ct-card__left">
+                                <p class="ct-dl">{{ formatDeadline(task.deadline) }}</p>
+                                <div class="ct-title-pill">{{ task.title || '（無題）' }}</div>
+                            </div>
+                            <div class="ct-card__right">
+                                <p class="ct-done-at">{{ formatCompletedAt(task) }}</p>
+                                <div class="avatar-stack-wrap ct-assignees">
+                                    <span class="avatar-stack-label">担当・メンバー</span>
+                                    <div class="avatar-stack">
+                                        @for (m of membersOrderedForAvatar(task); track m.uid) {
+                                            <div class="avatar-stack__chip" [title]="m.name">
+                                                @if (m.photoURL) {
+                                                    <img [src]="m.photoURL" [alt]="m.name" />
+                                                } @else {
+                                                    <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                                }
+                                                <span class="avatar-stack__name">{{ m.name }}</span>
+                                            </div>
+                                        } @empty {
+                                            <span class="hint">—</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav side-drawer__nav--member">
+            @if (memberId) {
+                <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
+            } @else {
+                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+                <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('shared') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                    }
+                    共有するタスク
+                </a>
+                <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('completed') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                    }
+                    完了したタスク
+                </a>
+                <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
+            }
+        </nav>
+    </aside>
+</div>

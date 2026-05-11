@@ -1,0 +1,180 @@
+.completed-tasks-page {
+    position: relative;
+}
+
+/* 横に伸び切らないよう共有タスク等と同じ読み幅に収める */
+.completed-tasks-page .main-area {
+    max-width: 960px;
+    width: 100%;
+    margin-inline: auto;
+}
+
+.ct-main {
+    width: 100%;
+    min-width: 0;
+}
+
+.ct-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.ct-header__titles {
+    flex: 1 1 200px;
+    text-align: center;
+}
+
+.ct-header__title {
+    margin: 0 0 0.25rem;
+}
+
+.ct-header__sub {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+}
+
+.ct-header-delete {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 10px;
+    color: #111;
+    align-self: center;
+}
+
+.ct-header-delete:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.ct-btn-revert {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.6rem;
+    padding: 0.45rem 0.85rem;
+    border: none;
+    border-radius: 12px;
+    background: var(--yellow-float);
+    color: #111;
+    font-size: 0.88rem;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    transition:
+        filter 0.15s,
+        opacity 0.15s;
+}
+
+.ct-btn-revert:hover:not(:disabled) {
+    filter: brightness(1.06);
+}
+
+.ct-btn-revert:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ct-btn-revert__icon {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.ct-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.ct-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: start;
+    padding: 0.7rem 0.85rem 0.85rem 0.45rem;
+    border: 1px solid #222;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.ct-check-wrap {
+    padding-top: 0.35rem;
+    cursor: pointer;
+}
+
+.ct-check-wrap input {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
+.ct-card__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.ct-card__left,
+.ct-card__right {
+    min-width: 0;
+}
+
+@media (min-width: 720px) {
+    .ct-card__body {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+    }
+}
+
+.ct-dl {
+    margin: 0 0 0.35rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.ct-title-pill {
+    padding: 0.38rem 0.55rem;
+    border-radius: 12px;
+    background: var(--gray-pill);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.ct-done-at {
+    margin: 0 0 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.ct-assignees .avatar-stack {
+    justify-content: flex-end;
+}
+
+.ct-empty {
+    text-align: center;
+    padding: 2rem 1rem;
+    margin-top: 0.5rem;
+}
+
+.ct-hedgehog {
+    width: min(180px, 50vw);
+    height: auto;
+    margin-bottom: 1rem;
+}
+
+.ct-empty__msg {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1.6;
+}
+

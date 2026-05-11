@@ -1,5 +1,10 @@
 /* メンバー専用の上書き・追加（Manage-tasks.css を併用） */
 
+.limit-tasks .main-area {
+    max-width: 960px;
+    margin-inline: auto;
+}
+
 .limit-tasks .sidebar-section-title {
     margin: 0 0 0.5rem;
     font-size: 1.1rem;
@@ -13,9 +18,9 @@
 
 .btn-today-create {
     flex: 1 1 100px;
-    min-height: 44px;
+    min-height: 38px;
     border: 2px solid #ccc;
-    border-radius: 16px;
+    border-radius: 12px;
     background: #f0f0f0;
     font-size: 0.88rem;
     font-weight: 800;
@@ -36,6 +41,8 @@
 
 .limit-header {
     align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
 }
 
 .limit-header__titles {
@@ -72,12 +79,12 @@
 .btn-parent-today {
     display: block;
     width: 100%;
-    margin: 0.75rem 0 0.25rem;
-    padding: 0.75rem 1rem;
+    margin: 0.55rem 0 0.2rem;
+    padding: 0.55rem 0.75rem;
     border: 2px solid #aaa;
-    border-radius: 18px;
+    border-radius: 14px;
     background: #ececec;
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     font-weight: 800;
     color: #333;
     cursor: pointer;
@@ -126,6 +133,11 @@
 .btn-today-pill--row {
     padding: 0.35rem 0.55rem;
     font-size: 0.68rem;
+}
+
+.btn-today-pill:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
 }
 
 .subtask-item--today {

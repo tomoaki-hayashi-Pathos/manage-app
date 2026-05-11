@@ -5,6 +5,11 @@
     align-items: stretch;
 }
 
+.ops-status-page .main-area {
+    max-width: 960px;
+    margin-inline: auto;
+}
+
 .ops-main {
     width: 100%;
 }
@@ -15,8 +20,96 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.85rem 3.5rem 0.85rem 1.2rem;
+    padding: 0.85rem 3.5rem 0.85rem 11rem;
     text-align: center;
+}
+
+.ops-legend {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    max-width: 9.75rem;
+    z-index: 2;
+}
+
+.ops-legend__title {
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: #333;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.ops-legend__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.ops-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.12rem 0.35rem;
+    border-radius: 6px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: #111;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.ops-legend__item--high {
+    background: #ffebee;
+}
+
+.ops-legend__item--mid {
+    background: #fff9c4;
+}
+
+.ops-legend__item--low {
+    background: #e8f5e9;
+}
+
+.ops-legend__range {
+    flex: 0 0 auto;
+}
+
+.ops-legend__label {
+    flex: 1 1 auto;
+    text-align: right;
+    font-weight: 800;
+}
+
+@media (max-width: 720px) {
+    .ops-header {
+        padding: 0.85rem 3.5rem 0.85rem 1.2rem;
+    }
+    .ops-legend {
+        position: static;
+        transform: none;
+        margin: 0.55rem auto 0;
+        width: 100%;
+        max-width: 22rem;
+    }
+    .ops-legend__list {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.25rem;
+    }
 }
 
 .ops-header__title {
@@ -49,6 +142,7 @@
     grid-template-columns: 1fr;
     gap: 1.15rem;
     margin-top: 0.5rem;
+    padding-bottom: 5rem;
 }
 
 @media (min-width: 640px) {
@@ -73,7 +167,7 @@
     display: block;
     text-decoration: none;
     color: inherit;
-    border-radius: 22px;
+    border-radius: 18px;
     outline: none;
 }
 
@@ -83,8 +177,8 @@
 
 .ops-card {
     border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 22px;
-    padding: 0.65rem 0.85rem 0.85rem;
+    border-radius: 18px;
+    padding: 0.55rem 0.75rem 0.75rem;
     transition:
         transform 0.15s ease,
         box-shadow 0.15s ease;
@@ -128,8 +222,8 @@
 }
 
 .ops-avatar {
-    width: 4.75rem;
-    height: 4.75rem;
+    width: 3.75rem;
+    height: 3.75rem;
     border-radius: 50%;
     object-fit: cover;
     display: block;
@@ -142,7 +236,7 @@
 }
 
 .ops-score {
-    font-size: clamp(2.4rem, 8vw, 3.25rem);
+    font-size: clamp(2rem, 7vw, 2.75rem);
     font-weight: 900;
     line-height: 1;
     color: #111;
@@ -158,7 +252,7 @@
 }
 
 .ops-name {
-    font-size: 1.05rem;
+    font-size: 0.98rem;
     font-weight: 800;
     color: #111;
     flex: 1 1 auto;
@@ -178,15 +272,14 @@
     line-height: 1.35;
 }
 
-/* ホバー・ツールチップ（visibility でフェード） */
+/* ホバー・ツールチップ（カード上に重ね表示、クリックは貫通） */
 .ops-hover-panel {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%) translateY(6px);
-    top: calc(100% - 4px);
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 120;
-    min-width: min(100%, 280px);
-    max-width: min(92vw, 340px);
+    max-width: 100%;
     padding: 0.55rem 0.65rem 0.65rem;
     border-radius: 14px;
     background: #fff;
@@ -195,6 +288,7 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+    transform: translateY(-6px);
     transition:
         opacity 0.22s ease,
         visibility 0.22s ease,
@@ -204,8 +298,7 @@
 .ops-card-wrap:hover .ops-hover-panel {
     opacity: 1;
     visibility: visible;
-    pointer-events: auto;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
 }
 
 .ops-hover-panel__title {
@@ -223,7 +316,7 @@
 }
 
 .ops-hover-panel__item {
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     font-weight: 600;
     margin-bottom: 0.2rem;
     overflow: hidden;
@@ -238,17 +331,4 @@
     list-style: none;
     margin-left: -1rem;
     padding-left: 0;
-}
-
-@media (max-width: 380px) {
-    .ops-hover-panel {
-        left: 0;
-        right: auto;
-        transform: translateX(0) translateY(6px);
-        max-width: 100%;
-    }
-
-    .ops-card-wrap:hover .ops-hover-panel {
-        transform: translateX(0) translateY(0);
-    }
 }

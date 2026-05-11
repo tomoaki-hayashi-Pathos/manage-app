@@ -1,7 +1,24 @@
 <div class="fcp-page">
     <div class="fcp-card">
-        <h1 class="fcp-title">プロジェクト作成</h1>
-        <p class="fcp-lead">プロジェクト名を入力し、参加メンバーを選択してください。先にチェックした人が管理者（admin）として登録されます。</p>
+        <h1 class="fcp-title">プロジェクト編集・作成ページ</h1>
+        <p class="fcp-lead">プロジェクト名を入力し、参加メンバーを選択してください。このページで作成したプロジェクトはログイン中の管理者だけに表示されます。</p>
+<!--ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー-->
+        <!--<div class="fcp-field">
+            <label class="fcp-label" for="projectSelect">既存プロジェクト選択</label>
+            <select
+                id="projectSelect"
+                class="fcp-input"
+                [ngModel]="selectedExistingProjectId"
+                (ngModelChange)="onProjectSelect($event)"
+                name="projectSelect"
+            >
+                <option value="">プロジェクトを選択</option>
+                @for (p of ownedProjects; track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                }
+                <option [value]="newProjectOptionValue">新規プロジェクトを入力</option>
+            </select>
+        </div>
 
         <div class="fcp-field">
             <label class="fcp-label" for="projectName">プロジェクト名</label>
@@ -13,12 +30,48 @@
                 [(ngModel)]="projectName"
                 placeholder="例：A社との合同プロジェクト"
                 autocomplete="organization"
+                [disabled]="!!selectedExistingProjectId"
+                [class.fcp-input--disabled]="!!selectedExistingProjectId"
             />
-        </div>
+        </div>-->
 
+        <div class="fcp-field">
+            <label class="fcp-label" for="projectSelect">新規・既存プロジェクト選択</label>
+            <select
+                id="projectSelect"
+                class="fcp-input"
+                [ngModel]="selectedExistingProjectId"
+                (ngModelChange)="onProjectSelect($event)"
+                name="projectSelect"
+            >
+                <option value="">プロジェクトを選択</option>
+                @for (p of appService.projects; track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                }
+                <option [value]="newProjectOptionValue">新規プロジェクトを入力</option>
+            </select>
+        </div>
+        
+        @if (selectedExistingProjectId === newProjectOptionValue) {
+            <div class="fcp-field field-animation">
+                <label class="fcp-label" for="projectName">プロジェクト名</label>
+                <input
+                    id="projectName"
+                    class="fcp-input"
+                    type="text"
+                    name="projectName"
+                    [(ngModel)]="projectName"
+                    placeholder="例：A社との合同プロジェクト"
+                    autocomplete="organization"
+                />
+            </div>
+        }
+
+        
+<!--ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー-->
         <section class="fcp-members">
             <h2 class="fcp-section-title">参加メンバー</h2>
-            <p class="fcp-hint">チェックを入れた順がそのまま保存されます（1人目＝管理者）。</p>
+            <p class="fcp-hint">チェック順で複数選択できます。</p>
 
             @if (appService.members.length === 0) {
                 <div class="fcp-empty">
@@ -27,24 +80,19 @@
                 </div>
             } @else {
                 <ul class="fcp-member-list">
-                    @for (m of appService.members; track m.uid) {
+                    @for (m of selectableMembers; track m.uid) {
                         <li>
-                            <label
-                                class="fcp-member-row"
-                                [class.fcp-member-row--selected]="isSelected(m.uid)"
-                            >
+                            <label class="fcp-member-row" [class.fcp-member-row--selected]="isSelected(m.uid)">
                                 <input
-                                    type="checkbox"
                                     class="fcp-member-row__check"
+                                    type="checkbox"
                                     [checked]="isSelected(m.uid)"
                                     (change)="onMemberCheckboxChange(m.uid, $any($event.target).checked)"
                                 />
                                 @if (m.photoURL) {
                                     <img class="fcp-member-row__photo" [src]="m.photoURL" [alt]="m.name" />
                                 } @else {
-                                    <span class="fcp-member-row__fallback" aria-hidden="true">{{
-                                        m.name.trim().slice(0, 2) || '？'
-                                    }}</span>
+                                    <span class="fcp-member-row__fallback">{{ m.name.slice(0, 2) }}</span>
                                 }
                                 <span class="fcp-member-row__body">
                                     <span class="fcp-member-row__name">{{ m.name }}</span>
@@ -60,7 +108,8 @@
                 </div>
 
                 <div class="fcp-sub">
-                    <a routerLink="/admin/create-member" class="btn btn--ghost">メンバーを追加登録</a>
+                    <a routerLink="/admin/create-member" class="btn btn--ghost">ログインメンバー承認へ</a>
+                    <a routerLink="/admin/menu" class="btn btn--ghost">管理者メニューに戻る</a>
                 </div>
             }
         </section>

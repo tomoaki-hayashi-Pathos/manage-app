@@ -1,8 +1,9 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, HostListener, effect, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { MemberBurdenSummary } from '../../core/interface';
+import { MemberBurdenSummary, AdminNavPageKey } from '../../core/interface';
+import { AdminProjectAccessService } from '../../services/admin-project-access.service';
 
 @Component({
     selector: 'app-ops-status',
@@ -11,12 +12,34 @@ import { MemberBurdenSummary } from '../../core/interface';
     templateUrl: './ops-status.html',
     styleUrls: ['./Manage-tasks.css', './ops-status.css']
 })
-export class OpsStatusComponent {
+export class OpsStatusComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
+    private readonly adminAccess = inject(AdminProjectAccessService);
     readonly projectId = this.route.snapshot.params['projectId'] as string;
+    private readonly accessEffect = effect(() => {
+        this.adminAccess.redirectIfForbidden(this.projectId);
+    });
 
     rightMenuOpen = false;
+
+    ngOnInit(): void {
+        this.appService.setAdminCurrentNavPage(this.projectId, null);
+    }
+
+    ngOnDestroy(): void {
+        this.appService.setAdminCurrentNavPage(this.projectId, null);
+    }
+
+    get gearNotifyTotal(): number {
+        void this.appService.notificationTick();
+        return this.appService.getAdminGearNotificationTotal(this.projectId);
+    }
+
+    adminNavBadge(page: AdminNavPageKey): number {
+        void this.appService.notificationTick();
+        return this.appService.getAdminPageNotificationCount(this.projectId, page);
+    }
 
     get projectName(): string {
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';

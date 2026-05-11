@@ -1,0 +1,163 @@
+<div class="manage-shell shared-tasks-page">
+    <main class="main-area">
+        <header class="project-header card-elevated st-header">
+            <div class="st-header__titles">
+                <h1 class="project-header__title st-header__title">共有するタスク</h1>
+                <p class="st-header__sub">
+                    {{ projectName || 'プロジェクト' }}
+                    @if (memberId) {
+                        <span> · {{ memberDisplayName }}</span>
+                    }
+                </p>
+            </div>
+            <div class="project-header__filter">
+                <span class="filter-label">タスク絞り込み</span>
+                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="stf">
+                    <option [ngValue]="'all'">タスクを選んでください</option>
+                    @for (t of parentTasksForFilter; track t.id) {
+                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
+                    }
+                </select>
+            </div>
+            <div class="icon-gear-wrap">
+                @if (gearNotifyTotal > 0) {
+                    <span class="gear-notify-badge">{{ gearNotifyTotal }}</span>
+                }
+                <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">⚙</button>
+            </div>
+        </header>
+
+        <div class="st-list">
+            @for (task of visibleSharedParents; track task.id) {
+                <article class="st-card card-elevated">
+                    @if (canUnshare(task)) {
+                        <div class="st-card__toolbar">
+                            <button type="button" class="btn-delete" (click)="unshare(task, $event)" title="共有解除" aria-label="共有解除">
+                                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                                    <path
+                                        fill="currentColor"
+                                        d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                    }
+                    <div class="st-card__inner">
+                        <div class="st-card__left">
+                            <p class="st-dl">{{ formatDeadline(task.deadline) }}</p>
+                            <div class="st-title-pill">
+                                @if (task.createdById === memberId) {
+                                    <span class="my-badge">MY</span>
+                                }
+                                <span class="st-title-text">{{ task.title || '（無題）' }}</span>
+                                <span [class]="statusClass(task.status)">{{ task.status }}</span>
+                            </div>
+                            <div class="st-mention-flow">
+                                <div class="st-avatar st-avatar--lg" [title]="senderOf(task)?.name ?? '管理者'">
+                                    @if (senderOf(task)?.photoURL) {
+                                        <img [src]="senderOf(task)!.photoURL" [alt]="senderOf(task)!.name" />
+                                    } @else {
+                                        <span class="st-avatar-fallback">{{ initials(senderOf(task)?.name ?? '管') }}</span>
+                                    }
+                                </div>
+                                <span class="st-arrows">≫≫≫</span>
+                                <div class="st-recipients">
+                                    @for (mid of task.mentionUserIds; track mid) {
+                                        @if (mid === TOK_ALL) {
+                                            <span class="st-recipient-pill st-recipient-pill--all">ALL</span>
+                                        } @else if (mid === TOK_ADMIN) {
+                                            <span class="st-recipient-pill st-recipient-pill--admin">ADMIN</span>
+                                        } @else if (appService.getMemberById(mid); as rm) {
+                                            <div class="st-avatar st-avatar--sm" [title]="rm.name">
+                                                @if (rm.photoURL) {
+                                                    <img [src]="rm.photoURL" [alt]="rm.name" />
+                                                } @else {
+                                                    <span class="st-avatar-fallback">{{ initials(rm.name) }}</span>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                            <div class="avatar-stack-wrap st-assignees">
+                                <span class="avatar-stack-label">担当</span>
+                                <div class="avatar-stack">
+                                    @for (m of membersOrderedForAvatar(task); track m.uid) {
+                                        <div class="avatar-stack__chip" [title]="m.name">
+                                            @if (m.photoURL) {
+                                                <img [src]="m.photoURL" [alt]="m.name" />
+                                            } @else {
+                                                <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                            }
+                                            <span class="avatar-stack__name">{{ m.name }}</span>
+                                        </div>
+                                    } @empty {
+                                        <span class="hint">未設定</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="st-card__right">
+                            <div class="st-subtask-scroll">
+                                <div class="st-subtask-inner">
+                                    @for (c of appService.getChildTasksByParentId(task.id); track c.id; let i = $index) {
+                                        <div class="st-sub-flow">
+                                            @if (i > 0) {
+                                                <div class="flow-arrow"></div>
+                                            }
+                                            <div class="st-sub-pill">
+                                                <span [class]="statusClass(c.status)">{{ c.status }}</span>
+                                                <span class="st-sub-title">{{ c.title }}</span>
+                                                @if (appService.getMemberById(c.assigneeId); as am) {
+                                                    <span class="st-sub-av">
+                                                        @if (am.photoURL) {
+                                                            <img [src]="am.photoURL" [alt]="am.name" />
+                                                        } @else {
+                                                            {{ initials(am.name) }}
+                                                        }
+                                                    </span>
+                                                }
+                                            </div>
+                                        </div>
+                                    } @empty {
+                                        <p class="hint">子タスクなし</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            } @empty {
+                <p class="empty-main">共有されているタスクはありません。</p>
+            }
+        </div>
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav side-drawer__nav--member">
+            @if (memberId) {
+                <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
+            } @else {
+                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+                <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('shared') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                    }
+                    共有するタスク
+                </a>
+                <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('completed') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                    }
+                    完了したタスク
+                </a>
+                <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
+            }
+        </nav>
+    </aside>
+</div>

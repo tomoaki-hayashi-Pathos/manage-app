@@ -2,8 +2,16 @@
     flex-direction: column;
 }
 
+/* 横に伸び切らないよう完了ページ等と同じ読み幅に収める */
+.detail-member-page .main-area {
+    max-width: 960px;
+    width: 100%;
+    margin-inline: auto;
+}
+
 .dm-main {
     width: 100%;
+    min-width: 0;
 }
 
 .dm-header__inner {
@@ -80,24 +88,26 @@
 }
 
 .dm-tasks {
-    margin-top: 1rem;
-    padding: 1rem 1.15rem;
+    margin-top: 0.85rem;
+    padding: 0.75rem 0.9rem;
 }
 
 .dm-tasks__heading {
-    margin: 0 0 0.65rem;
-    font-size: 1rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
     font-weight: 800;
 }
 
 .dm-tasks__list {
     margin: 0;
-    padding-left: 1.2rem;
+    padding-left: 1.1rem;
 }
 
 .dm-tasks__item {
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.28rem;
+    font-size: 0.9rem;
     font-weight: 600;
+    line-height: 1.4;
     word-break: break-word;
 }
 

@@ -1,1 +1,4 @@
 <router-outlet></router-outlet>
+@if (adminToastBanner(); as toastText) {
+  <div class="admin-toast" role="status" aria-live="polite">{{ toastText }}</div>
+}

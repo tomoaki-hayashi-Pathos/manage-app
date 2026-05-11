@@ -1,0 +1,49 @@
+<div class="entry">
+  <div class="card">
+    <div class="user">
+      <div>
+        <h1>管理者メニュー</h1>
+        <p>ログイン中: {{ auth.user()?.displayName || auth.user()?.email }}</p>
+      </div>
+      <button type="button" class="btn btn-ghost" (click)="logout()">ログアウト</button>
+    </div>
+
+    @if (!app.ready() || auth.loading()) {
+      <p>ログイン状態を確認しています。しばらくお待ちください。</p>
+    } @else if (me()?.role !== '管理者') {
+      <p class="pending">管理者として承認されていません。</p>
+    } @else {
+      <section class="section">
+        <button type="button" class="btn" (click)="goProjectCreateEdit()">プロジェクト作成・編集ページへ</button>
+        <button type="button" class="btn" (click)="goProjectApproval()">新規メンバー承認ページへ</button>
+
+        <label>プロジェクト選択</label>
+        <select [(ngModel)]="adminProjectId">
+          <option value="">選択してください</option>
+          @for (p of ownedProjects(); track p.id) {
+            <option [value]="p.id">{{ p.name }}</option>
+          }
+        </select>
+        <button type="button" class="btn" (click)="openAdminProject()">管理画面へ</button>
+
+        <label>既存メンバー削除</label>
+        <select [(ngModel)]="removeMemberUid">
+          <option value="">選択してください</option>
+          @for (m of app.members; track m.uid) {
+            <option [value]="m.uid">{{ m.name }} ({{ m.email }})</option>
+          }
+        </select>
+        <button type="button" class="btn btn-danger" (click)="removeMember()">削除</button>
+
+        <label>既存プロジェクト削除</label>
+        <select [(ngModel)]="removeProjectId">
+          <option value="">選択してください</option>
+          @for (p of ownedProjects(); track p.id) {
+            <option [value]="p.id">{{ p.name }}</option>
+          }
+        </select>
+        <button type="button" class="btn btn-danger" (click)="removeProject()">削除</button>
+      </section>
+    }
+  </div>
+</div>
