@@ -1,28 +1,63 @@
-import { Component, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, effect, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { ParentTask, WorkingTaskState } from '../../core/interface';
+import { ParentTask, WorkingTaskState, Member } from '../../core/interface';
 import { MemberNavLinksComponent } from './member-nav-links';
+import { AuthSessionService } from '../../services/auth-session.service';
+import { Router } from '@angular/router';
+import { MemberTaskRouteContext } from './member-task-route-context';
+import { MemberAccessService } from '../../services/member-access.service';
+import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import {
+    defaultToolbarFilterState,
+    parentMatchesToolbarFilters,
+    type TaskToolbarFilterState,
+} from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 
 @Component({
     selector: 'app-not-set-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, MemberNavLinksComponent],
+    imports: [FormsModule, CommonModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
     templateUrl: './not-set-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './not-set-tasks.css']
 })
 export class NotSetTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
+    private readonly auth = inject(AuthSessionService);
+    private readonly router = inject(Router);
+    private readonly memberAccess = inject(MemberAccessService);
 
-    readonly projectId = this.route.snapshot.params['projectId'] as string;
-    readonly memberId = this.route.snapshot.params['memberId'] as string;
+    private readonly ctx = new MemberTaskRouteContext(this.route, this.appService, this.auth, this.router);
 
-    projectName = this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    private readonly memberRouteGuardEffect = effect(() => {
+        void this.appService.ready();
+        void this.appService.notificationTick();
+        this.ctx.ensureMemberAccess(this.memberAccess);
+    });
 
-    parentTaskFilterId: string | 'all' = 'all';
+    get projectId(): string {
+        return this.ctx.projectId;
+    }
+
+    get memberId(): string {
+        return this.ctx.memberId;
+    }
+
+    navLinkMode(): 'member' | 'adminSelf' | 'personal' {
+        if (this.ctx.mode === 'personal') return 'personal';
+        if (this.ctx.mode === 'adminSelf') return 'adminSelf';
+        return 'member';
+    }
+
+    get projectName(): string {
+        if (this.ctx.mode === 'personal') return '個人タスク';
+        return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    }
+
+    toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
 
     /** タスク id → 編集中の状態 */
     working: Record<string, WorkingTaskState> = {};
@@ -33,6 +68,7 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
     isSaving = false;
 
     ngOnInit(): void {
+        if (!this.ctx.ensureMemberAccess(this.memberAccess)) return;
         this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'not-set');
         this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'not-set');
     }
@@ -85,6 +121,18 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
         return s.slice(0, 2);
     }
 
+    get users(): Member[] {
+        return this.appService.getMembersByProjectId(this.projectId);
+    }
+
+    get toolbarCandidateParents(): ParentTask[] {
+        return [...this.eligibleParents];
+    }
+
+    hideToolbarAssigneeFilter(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
     private sortEligibleParents(a: ParentTask, b: ParentTask): number {
         const pr = a.priority === '高' ? 0 : 1;
         const qr = b.priority === '高' ? 0 : 1;
@@ -92,16 +140,10 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
         return (a.title || '').localeCompare(b.title || '', 'ja');
     }
 
-    get parentTasksForFilter(): ParentTask[] {
-        return [...this.eligibleParents].sort((a, b) => this.sortEligibleParents(a, b));
-    }
-
     get visibleParents(): ParentTask[] {
-        let list = this.eligibleParents;
-        if (this.parentTaskFilterId !== 'all') {
-            list = list.filter((t) => t.id === this.parentTaskFilterId);
-        }
-        return list.sort((a, b) => this.sortEligibleParents(a, b));
+        return [...this.eligibleParents]
+            .sort((a, b) => this.sortEligibleParents(a, b))
+            .filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
     }
 
     toggleToday(task: ParentTask): void {

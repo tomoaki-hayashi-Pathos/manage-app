@@ -1,39 +1,9 @@
 <div class="fcp-page">
     <div class="fcp-card">
         <h1 class="fcp-title">プロジェクト編集・作成ページ</h1>
-        <p class="fcp-lead">プロジェクト名を入力し、参加メンバーを選択してください。このページで作成したプロジェクトはログイン中の管理者だけに表示されます。</p>
-<!--ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー-->
-        <!--<div class="fcp-field">
-            <label class="fcp-label" for="projectSelect">既存プロジェクト選択</label>
-            <select
-                id="projectSelect"
-                class="fcp-input"
-                [ngModel]="selectedExistingProjectId"
-                (ngModelChange)="onProjectSelect($event)"
-                name="projectSelect"
-            >
-                <option value="">プロジェクトを選択</option>
-                @for (p of ownedProjects; track p.id) {
-                    <option [value]="p.id">{{ p.name }}</option>
-                }
-                <option [value]="newProjectOptionValue">新規プロジェクトを入力</option>
-            </select>
-        </div>
-
-        <div class="fcp-field">
-            <label class="fcp-label" for="projectName">プロジェクト名</label>
-            <input
-                id="projectName"
-                class="fcp-input"
-                type="text"
-                name="projectName"
-                [(ngModel)]="projectName"
-                placeholder="例：A社との合同プロジェクト"
-                autocomplete="organization"
-                [disabled]="!!selectedExistingProjectId"
-                [class.fcp-input--disabled]="!!selectedExistingProjectId"
-            />
-        </div>-->
+        <p class="fcp-lead">
+            チーム用は参加メンバーを選び、チェックの先頭が責任者です。個人用は名前のみで作成します。一覧はあなたが責任者のプロジェクトのみです。
+        </p>
 
         <div class="fcp-field">
             <label class="fcp-label" for="projectSelect">新規・既存プロジェクト選択</label>
@@ -43,16 +13,19 @@
                 [ngModel]="selectedExistingProjectId"
                 (ngModelChange)="onProjectSelect($event)"
                 name="projectSelect"
+                [disabled]="formLocked"
             >
                 <option value="">プロジェクトを選択</option>
-                @for (p of appService.projects; track p.id) {
-                    <option [value]="p.id">{{ p.name }}</option>
+                @for (p of ownedProjects; track p.id) {
+                    <option [value]="p.id">{{ projectOptionLabel(p) }}</option>
                 }
                 <option [value]="newProjectOptionValue">新規プロジェクトを入力</option>
+                <option [value]="newPersonalProjectOptionValue">新規プロジェクト（個人）を入力</option>
             </select>
         </div>
-        
-        @if (selectedExistingProjectId === newProjectOptionValue) {
+
+        @if (isNewProjectMode || isNewPersonalProjectMode) {
+            <div class="fcp-new-mode-arrow" aria-hidden="true">↓</div>
             <div class="fcp-field field-animation">
                 <label class="fcp-label" for="projectName">プロジェクト名</label>
                 <input
@@ -61,55 +34,89 @@
                     type="text"
                     name="projectName"
                     [(ngModel)]="projectName"
-                    placeholder="例：A社との合同プロジェクト"
+                    [placeholder]="isNewPersonalProjectMode ? '例：マイ進捗' : '例：A社との合同プロジェクト'"
                     autocomplete="organization"
                 />
             </div>
         }
+        @if (isExistingProjectMode) {
+            <div class="fcp-field field-animation">
+                <label class="fcp-label" for="projectNameEdit">プロジェクト名</label>
+                <input
+                    id="projectNameEdit"
+                    class="fcp-input"
+                    type="text"
+                    name="projectNameEdit"
+                    [(ngModel)]="projectName"
+                    placeholder="プロジェクト名"
+                    autocomplete="organization"
+                    [disabled]="formLocked"
+                />
+            </div>
+        }
 
-        
-<!--ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー-->
         <section class="fcp-members">
-            <h2 class="fcp-section-title">参加メンバー</h2>
-            <p class="fcp-hint">チェック順で複数選択できます。</p>
+            @if (!hideMemberPicker) {
+                <h2 class="fcp-section-title">参加メンバー</h2>
+                <p class="fcp-hint">
+                    チェック順で複数選択できます。先頭にチェックされた人が責任者です（順を変えるには一度外して付け直してください）。
+                </p>
 
-            @if (appService.members.length === 0) {
-                <div class="fcp-empty">
-                    <p class="fcp-empty__text">登録済みメンバーがいません。先にメンバーを登録してください。</p>
-                    <a routerLink="/admin/create-member" class="btn btn--primary btn--large">新規メンバー登録</a>
-                </div>
-            } @else {
-                <ul class="fcp-member-list">
-                    @for (m of selectableMembers; track m.uid) {
-                        <li>
-                            <label class="fcp-member-row" [class.fcp-member-row--selected]="isSelected(m.uid)">
-                                <input
-                                    class="fcp-member-row__check"
-                                    type="checkbox"
-                                    [checked]="isSelected(m.uid)"
-                                    (change)="onMemberCheckboxChange(m.uid, $any($event.target).checked)"
-                                />
-                                @if (m.photoURL) {
-                                    <img class="fcp-member-row__photo" [src]="m.photoURL" [alt]="m.name" />
-                                } @else {
-                                    <span class="fcp-member-row__fallback">{{ m.name.slice(0, 2) }}</span>
-                                }
-                                <span class="fcp-member-row__body">
-                                    <span class="fcp-member-row__name">{{ m.name }}</span>
-                                    <span class="fcp-member-row__meta">{{ m.email }} · {{ m.role }}</span>
-                                </span>
-                            </label>
-                        </li>
-                    }
-                </ul>
+                @if (appService.members.length === 0) {
+                    <div class="fcp-empty">
+                        <p class="fcp-empty__text">登録済みメンバーがいません。先にメンバーを登録してください。</p>
+                    </div>
+                } @else {
+                    <ul class="fcp-member-list">
+                        @for (m of selectableMembers; track m.uid) {
+                            <li>
+                                <label class="fcp-member-row" [class.fcp-member-row--selected]="isSelected(m.uid)">
+                                    <input
+                                        class="fcp-member-row__check"
+                                        type="checkbox"
+                                        [checked]="isSelected(m.uid)"
+                                        [disabled]="formLocked"
+                                        (change)="onMemberCheckboxChange(m.uid, $any($event.target).checked)"
+                                    />
+                                    @if (m.photoURL) {
+                                        <img class="fcp-member-row__photo" [src]="m.photoURL" [alt]="m.name" />
+                                    } @else {
+                                        <span class="fcp-member-row__fallback">{{ m.name.slice(0, 2) }}</span>
+                                    }
+                                    <span class="fcp-member-row__body">
+                                        <span class="fcp-member-row__name">
+                                            {{ m.name }}
+                                            @if (projectLeadUid === m.uid) {
+                                                <span class="fcp-pill-lead">責任者</span>
+                                            }
+                                        </span>
+                                        <span class="fcp-member-row__meta">{{ m.email }} · {{ m.role }}</span>
+                                    </span>
+                                </label>
+                            </li>
+                        }
+                    </ul>
+                }
+            }
 
-                <div class="fcp-actions">
-                    <button type="button" class="btn btn--primary" (click)="createProject()">プロジェクト作成</button>
-                </div>
+            <div class="fcp-actions">
+                <button
+                    type="button"
+                    class="btn btn--primary"
+                    [disabled]="!canSubmitPrimary"
+                    (click)="submitProject()"
+                >
+                    {{ primaryButtonLabel }}
+                </button>
+            </div>
 
-                <div class="fcp-sub">
-                    <a routerLink="/admin/create-member" class="btn btn--ghost">ログインメンバー承認へ</a>
-                    <a routerLink="/admin/menu" class="btn btn--ghost">管理者メニューに戻る</a>
+            <div class="fcp-sub">
+                <a routerLink="/member/hub" class="btn btn--ghost">メンバーページに戻る</a>
+            </div>
+
+            @if (showDeleteProject) {
+                <div class="fcp-delete">
+                    <button type="button" class="fcp-delete__btn" (click)="confirmDeleteProject()">プロジェクトを削除</button>
                 </div>
             }
         </section>

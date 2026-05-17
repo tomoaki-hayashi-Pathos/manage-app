@@ -1,0 +1,77 @@
+<div class="tsf-root">
+    <div class="tsf-row">
+        <input
+            type="search"
+            class="tsf-search input-pill"
+            placeholder="キーワード検索"
+            [ngModel]="filter.searchText"
+            (ngModelChange)="patch({ searchText: $event })"
+            name="tsfSearch"
+        />
+        <div class="tsf-actions">
+            <button type="button" class="tsf-filter-btn" (click)="toggleMenu($event)" [attr.aria-expanded]="menuOpen">フィルタ</button>
+            @if (showSortMenu) {
+                <div class="tsf-sort-wrap">
+                    <button type="button" class="tsf-filter-btn" (click)="toggleSortMenu($event)" [attr.aria-expanded]="sortMenuOpen">ソート</button>
+                    @if (sortMenuOpen) {
+                        <div class="tsf-sort-panel" (click)="$event.stopPropagation()">
+                            <button type="button" class="tsf-sort-option" (click)="pickSortDeadline()">期限順</button>
+                            <button type="button" class="tsf-sort-option" (click)="pickSortStatus()">ステータス順</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (menuOpen) {
+        <div class="tsf-panel" (click)="$event.stopPropagation()">
+            <label class="tsf-row-toggle">
+                <input type="checkbox" [checked]="filter.incompleteOnly" (change)="toggleIncomplete()" />
+                <span>未完了のみ（親）</span>
+            </label>
+
+            @if (!hideAssigneeFilter) {
+                <div class="tsf-section">
+                    <button type="button" class="tsf-sub-toggle" (click)="toggleAssigneeSub($event)">
+                        担当者 <span class="tsf-chevron">{{ assigneeSubOpen ? '▾' : '▸' }}</span>
+                    </button>
+                    @if (assigneeSubOpen) {
+                        <div class="tsf-sub">
+                            <button type="button" class="tsf-chip" [class.tsf-chip--on]="filter.assigneeUid === null" (click)="pickAssignee(null)">（指定なし）</button>
+                            @for (m of visibleAssignees(); track m.uid) {
+                                <button type="button" class="tsf-chip" [class.tsf-chip--on]="filter.assigneeUid === m.uid" (click)="pickAssignee(m.uid)">
+                                    {{ m.name }}
+                                </button>
+                            }
+                            @if (!assigneeExpanded && assigneeList().length > assigneeSliceCap) {
+                                <button type="button" class="tsf-more" (click)="assigneeExpanded = true">もっと見る</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="tsf-section">
+                <button type="button" class="tsf-sub-toggle" (click)="toggleTaskNameSub($event)">
+                    タスク名 <span class="tsf-chevron">{{ taskNameSubOpen ? '▾' : '▸' }}</span>
+                </button>
+                @if (taskNameSubOpen) {
+                    <div class="tsf-sub">
+                        <button type="button" class="tsf-chip" [class.tsf-chip--on]="filter.pickParentId === null" (click)="pickParent(null)">（指定なし）</button>
+                        @for (p of visibleParentsForPick(); track p.id) {
+                            <button type="button" class="tsf-chip tsf-chip--title" [class.tsf-chip--on]="filter.pickParentId === p.id" (click)="pickParent(p.id)">
+                                {{ p.title || '（無題）' }}
+                            </button>
+                        }
+                        @if (!taskNameExpanded && candidateParents.length > taskSliceCap) {
+                            <button type="button" class="tsf-more" (click)="taskNameExpanded = true">もっと見る</button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <button type="button" class="tsf-reset" (click)="resetAll()">全表示</button>
+        </div>
+    }
+</div>

@@ -3,6 +3,7 @@ import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, startWith } from 'rxjs/operators';
 import { AdminToastService } from './services/admin-toast.service';
+import { MemberAccessService } from './services/member-access.service';
 
 @Component({
   selector: 'app-root',
@@ -14,6 +15,8 @@ export class App {
   protected readonly title = signal('manage');
   private readonly router = inject(Router);
   readonly adminToast = inject(AdminToastService);
+  /** グローバル: メンバー削除時のログアウト監視 */
+  private readonly _memberAccess = inject(MemberAccessService);
 
   /** ナビゲーションとトーストの両方で再評価される */
   private readonly urlPath = toSignal(

@@ -10,14 +10,16 @@
                     }
                 </p>
             </div>
-            <div class="project-header__filter">
-                <span class="filter-label">タスク絞り込み</span>
-                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="stf">
-                    <option [ngValue]="'all'">タスクを選んでください</option>
-                    @for (t of parentTasksForFilter; track t.id) {
-                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
-                    }
-                </select>
+            <div class="project-header__filter project-header__filter--toolbar">
+                <app-task-search-filter-toolbar
+                    [filter]="toolbarFilter"
+                    (filterChange)="toolbarFilter = $event"
+                    [members]="users"
+                    [candidateParents]="toolbarCandidateParents"
+                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    [showSortMenu]="true"
+                    (parentSortPicked)="onParentSortPick($event)"
+                />
             </div>
             <div class="icon-gear-wrap">
                 @if (gearNotifyTotal > 0) {
@@ -140,23 +142,37 @@
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
         <nav class="side-drawer__nav side-drawer__nav--member">
             @if (memberId) {
-                <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
+                <app-member-nav-links
+                    [projectId]="projectId"
+                    [memberId]="memberId!"
+                    [navMode]="navLinkMode()"
+                    [currentNavKey]="'shared'"
+                    (nav)="closeRightMenu()"
+                />
             } @else {
-                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
-                <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
-                <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                    @if (adminNavBadge('shared') > 0) {
-                        <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
-                    }
-                    共有するタスク
-                </a>
-                <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                    @if (adminNavBadge('completed') > 0) {
-                        <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
-                    }
-                    完了したタスク
-                </a>
-                <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
+                @if (showAdminDrawerNav('manage')) {
+                    <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                }
+                @if (showAdminDrawerNav('ops')) {
+                    <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+                }
+                @if (showAdminDrawerNav('shared')) {
+                    <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('shared') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                        }
+                        共有するタスク
+                    </a>
+                }
+                @if (showAdminDrawerNav('completed')) {
+                    <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('completed') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                        }
+                        完了したタスク
+                    </a>
+                }
+                <a routerLink="/member/hub" class="side-drawer__item" (click)="closeRightMenu()">メンバーページに戻る</a>
             }
         </nav>
     </aside>

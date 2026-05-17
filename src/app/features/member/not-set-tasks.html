@@ -13,14 +13,14 @@
                         確定
                     }
                 </button>
-                <div class="project-header__filter nst-filter">
-                    <span class="filter-label">タスク絞り込み</span>
-                    <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="nsfilt">
-                        <option [ngValue]="'all'">タスクを選んでください</option>
-                        @for (t of parentTasksForFilter; track t.id) {
-                            <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
-                        }
-                    </select>
+                <div class="project-header__filter nst-filter project-header__filter--toolbar">
+                    <app-task-search-filter-toolbar
+                        [filter]="toolbarFilter"
+                        (filterChange)="toolbarFilter = $event"
+                        [members]="users"
+                        [candidateParents]="toolbarCandidateParents"
+                        [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    />
                 </div>
                 <div class="icon-gear-wrap">
                     @if (gearNotifyTotal > 0) {
@@ -88,7 +88,13 @@
     <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen">
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()">×</button>
         <nav class="side-drawer__nav side-drawer__nav--member">
-            <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
+            <app-member-nav-links
+                [projectId]="projectId"
+                [memberId]="memberId"
+                [navMode]="navLinkMode()"
+                [currentNavKey]="'not-set'"
+                (nav)="closeRightMenu()"
+            />
         </nav>
     </aside>
 </div>

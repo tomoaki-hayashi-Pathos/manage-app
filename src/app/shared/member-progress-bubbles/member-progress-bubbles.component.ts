@@ -11,9 +11,13 @@ import type { ProgressBubbleVm } from '../../services/progress-reporting.service
 })
 export class MemberProgressBubblesComponent {
   @Input() bubbles: ProgressBubbleVm[] = [];
-  @Input() layout: 'row' | 'inline' = 'row';
+  @Input() layout: 'row' | 'inline' | 'single' = 'row';
+  /** 親チームストリップ等：アバター横に名前がホバーで展開 */
+  @Input() slidingName = false;
   /** false のとき吹き出しのみ（子行などで別に担当アバタがある場合） */
   @Input() showAvatar = true;
+  /** false のとき上段の進捗吹き出しを出さない（親ストリップで子ありのときなど） */
+  @Input() showSpeechBubble = true;
 
   initials(name: string): string {
     const n = name.trim();

@@ -1,0 +1,111 @@
+.parent-team-progress-wrap {
+    margin-top: 0.65rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.parent-team-progress-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.65rem 1rem;
+}
+
+.parent-team-progress-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 4.75rem;
+}
+
+.parent-team-progress-col .avatar-role-label {
+    flex: none;
+    width: auto;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #555;
+    letter-spacing: 0.04em;
+}
+
+/* メンバー列：ラベルは先頭列のみ表示。他列はレイアウト用に同寸の不可視ラベル */
+.parent-team-progress-col .avatar-role-label--spacer {
+    visibility: hidden;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* 担当列：アバター寸法・赤枠（子コンポーネントへ穿透） */
+:host ::ng-deep .parent-team-progress-col--lead .member-progress-dock--slide-name .member-progress-dock__avatar {
+    width: 36px;
+    height: 36px;
+    border-color: #d91e1e;
+}
+
+.parent-team-members-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 0.65rem;
+}
+
+.parent-team-members-group--stack {
+    gap: 0;
+}
+
+.parent-team-members-group--stack > .parent-team-progress-col--member {
+    margin-left: -42px;
+    transition:
+        margin 0.3s ease,
+        transform 0.25s ease;
+    position: relative;
+}
+
+.parent-team-members-group--stack > .parent-team-progress-col--member:first-child {
+    margin-left: 0;
+}
+
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(1) {
+    z-index: 1;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(2) {
+    z-index: 2;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(3) {
+    z-index: 3;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(4) {
+    z-index: 4;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(5) {
+    z-index: 5;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(6) {
+    z-index: 6;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(7) {
+    z-index: 7;
+}
+.parent-team-members-group--stack > .parent-team-progress-col--member:nth-child(8) {
+    z-index: 8;
+}
+
+.parent-team-members-group--stack:hover > .parent-team-progress-col--member {
+    margin-left: 0.45rem;
+}
+
+.parent-team-members-group--stack:hover > .parent-team-progress-col--member:first-child {
+    margin-left: 0;
+}
+
+.parent-team-members-group--stack > .parent-team-progress-col--member:hover {
+    z-index: 50;
+}
+
+/* 担当列：子タスク担当チップと同系の白ピル＋赤枠（子コンポーネントへスタイル穿透） */
+:host ::ng-deep .parent-team-progress-col--lead .member-progress-dock--slide-name .member-progress-dock__avatar-row {
+    border: 2px solid #d91e1e;
+    box-shadow: 0 2px 8px rgba(217, 30, 30, 0.28);
+}

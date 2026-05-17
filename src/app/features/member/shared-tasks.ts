@@ -1,16 +1,26 @@
 import { Component, HostListener, effect, inject, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppService } from '../../app.service';
 import { ParentTask, Member, MENTION_ALL, MENTION_ADMIN, AdminNavPageKey } from '../../core/interface';
 import { MemberNavLinksComponent } from './member-nav-links';
 import { AdminProjectAccessService } from '../../services/admin-project-access.service';
+import { AuthSessionService } from '../../services/auth-session.service';
+import { MemberTaskRouteContext, readMemberTaskRouteMode } from './member-task-route-context';
+import { MemberAccessService } from '../../services/member-access.service';
+import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import {
+    defaultToolbarFilterState,
+    parentMatchesToolbarFilters,
+    type TaskToolbarFilterState,
+} from '../../shared/task-search-filter-toolbar/task-search-filter.util';
+import { showAdminDrawerLink, type AdminDrawerNavTarget } from '../admin/admin-drawer-nav.util';
 
 @Component({
     selector: 'app-shared-tasks',
     standalone: true,
-    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent],
+    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
     templateUrl: './shared-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './shared-tasks.css']
 })
@@ -18,20 +28,46 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
     private readonly adminAccess = inject(AdminProjectAccessService);
+    private readonly auth = inject(AuthSessionService);
+    private readonly router = inject(Router);
+    private readonly memberAccess = inject(MemberAccessService);
 
-    readonly projectId = this.route.snapshot.params['projectId'] as string;
-    readonly memberId = this.route.snapshot.params['memberId'] as string | undefined;
+    private readonly ctx = new MemberTaskRouteContext(this.route, this.appService, this.auth, this.router);
+
+    get projectId(): string {
+        return this.ctx.projectId;
+    }
+
+    get memberId(): string | undefined {
+        if (this.isAdminView) return undefined;
+        const id = this.ctx.memberId;
+        return id || undefined;
+    }
+
+    navLinkMode(): 'member' | 'adminSelf' | 'personal' {
+        if (this.ctx.mode === 'personal') return 'personal';
+        if (this.ctx.mode === 'adminSelf') return 'adminSelf';
+        return 'member';
+    }
+
     private readonly accessEffect = effect(() => {
-        if (this.isAdminView) this.adminAccess.redirectIfForbidden(this.projectId);
+        if (this.isAdminView) {
+            this.adminAccess.redirectIfForbidden(this.projectId);
+            return;
+        }
+        void this.appService.ready();
+        void this.appService.notificationTick();
+        this.ctx.ensureMemberAccess(this.memberAccess);
     });
 
-    parentTaskFilterId: string | 'all' = 'all';
+    toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
     rightMenuOpen = false;
 
     readonly TOK_ALL = MENTION_ALL;
     readonly TOK_ADMIN = MENTION_ADMIN;
 
     ngOnInit(): void {
+        if (!this.isAdminView && !this.ctx.ensureMemberAccess(this.memberAccess)) return;
         if (this.isAdminView) {
             this.appService.setAdminCurrentNavPage(this.projectId, 'shared');
             this.appService.clearAdminPageNotifications(this.projectId, 'shared');
@@ -59,7 +95,8 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     }
 
     get isAdminView(): boolean {
-        return this.memberId === undefined;
+        if (readMemberTaskRouteMode(this.route) === 'personal') return false;
+        return !this.route.snapshot.paramMap.get('memberId');
     }
 
     adminNavBadge(page: AdminNavPageKey): number {
@@ -67,7 +104,12 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
         return this.appService.getAdminPageNotificationCount(this.projectId, page);
     }
 
+    showAdminDrawerNav(target: AdminDrawerNavTarget): boolean {
+        return showAdminDrawerLink(this.router, this.projectId, target);
+    }
+
     get projectName(): string {
+        if (this.ctx.mode === 'personal') return '個人タスク';
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
@@ -83,16 +125,28 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
         return base.filter((t) => this.appService.isSharedTaskVisibleToMember(t, this.memberId!));
     }
 
-    get parentTasksForFilter(): ParentTask[] {
-        return [...this.sharedParents].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+    get users(): Member[] {
+        return this.appService.getMembersByProjectId(this.projectId);
+    }
+
+    get toolbarCandidateParents(): ParentTask[] {
+        return [...this.sharedParents];
+    }
+
+    hideToolbarAssigneeFilter(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
+    onParentSortPick(kind: 'deadline' | 'status'): void {
+        if (kind === 'deadline') {
+            this.appService.resetParentListSortToDeadline(this.projectId);
+        } else {
+            this.appService.resetParentListSortToStatus(this.projectId);
+        }
     }
 
     get visibleSharedParents(): ParentTask[] {
-        let list = this.sharedParents;
-        if (this.parentTaskFilterId !== 'all') {
-            list = list.filter((t) => t.id === this.parentTaskFilterId);
-        }
-        return list;
+        return this.sharedParents.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
     }
 
     canUnshare(task: ParentTask): boolean {

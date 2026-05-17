@@ -1,0 +1,68 @@
+<div class="entry">
+  <div class="card member-hub-card">
+    <div class="user">
+      <div>
+        <h1>メンバーページ</h1>
+        @if (me(); as m) {
+          <div class="entry-user-chip">
+            @if (m.photoURL) {
+              <img class="entry-user-chip__img" [src]="m.photoURL" [alt]="m.name" />
+            } @else {
+              <span class="entry-user-chip__fallback">{{ m.name.slice(0, 2) }}</span>
+            }
+            <span class="entry-user-chip__name">{{ m.name }}</span>
+          </div>
+        } @else if (auth.user(); as u) {
+          <div class="entry-user-chip">
+            @if (u.photoURL) {
+              <img class="entry-user-chip__img" [src]="u.photoURL" [alt]="u.displayName || u.email || ''" />
+            } @else {
+              <span class="entry-user-chip__fallback">{{ (u.displayName || u.email || '?').slice(0, 2) }}</span>
+            }
+            <span class="entry-user-chip__name">{{ u.displayName || u.email }}</span>
+          </div>
+        }
+      </div>
+      <button type="button" class="btn btn-ghost" (click)="logout()">ログアウト</button>
+    </div>
+
+    @if (!app.ready() || auth.loading()) {
+      <p>読み込み中…</p>
+    } @else if (!me()) {
+      <p class="pending">承認されていません。</p>
+    } @else {
+      <section class="section member-hub-main">
+        <div class="member-hub-actions">
+          <button type="button" class="member-hub-circle-btn member-hub-circle-btn--select" (click)="openProjectPicker()">
+            参加プロジェクト<br />を選択
+          </button>
+          <button type="button" class="member-hub-circle-btn member-hub-circle-btn--create" (click)="goProjectCreateEdit()">
+            チーム、個人<br />プロジェクトの<br />作成、編集
+          </button>
+        </div>
+
+        @if (projectPickerOpen) {
+          <div class="member-hub-picker">
+            <p class="hint">参加プロジェクトを選んでください。個人プロジェクトは「（個人）」と表示されます。</p>
+            <label>参加プロジェクト</label>
+            <div class="member-hub-project-row">
+              <select [(ngModel)]="memberProjectId" name="memberHubProject">
+                <option value="">選択してください</option>
+                @for (p of assignedProjects(); track p.id) {
+                  <option [value]="p.id">{{ p.name }}@if (p.isPersonal) { （個人）}</option>
+                }
+              </select>
+              <button type="button" class="btn" (click)="openMemberProject()">決定</button>
+            </div>
+          </div>
+        }
+
+        @if (me() && app.isAppOwner(me()!.uid)) {
+          <div class="member-hub-footer">
+            <button type="button" class="member-hub-owner-link" (click)="goOwnerMenu()">オーナーページに行く</button>
+          </div>
+        }
+      </section>
+    }
+  </div>
+</div>

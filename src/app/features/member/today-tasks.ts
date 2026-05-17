@@ -1,4 +1,4 @@
-import { Component, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, effect, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
 import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -8,8 +8,26 @@ import { MemberNavLinksComponent } from './member-nav-links';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ProgressReportingService } from '../../services/progress-reporting.service';
 import { AiChatService } from '../../services/ai-chat.service';
+import { StorageService } from '../../services/storage.service';
+import {
+    confirmMemberTaskChangeBubble,
+    readPendingMemberTaskChangeBubble,
+    watchMemberTaskChangeBundle
+} from './member-task-change-bubble';
+import { AuthSessionService } from '../../services/auth-session.service';
+import { Router } from '@angular/router';
+import { MemberTaskRouteContext } from './member-task-route-context';
+import { MemberAccessService } from '../../services/member-access.service';
 import { ProgressMemberShellComponent } from '../../shared/progress-member-shell/progress-member-shell.component';
 import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
+import { ParentTeamProgressStripComponent } from '../../shared/parent-team-progress-strip/parent-team-progress-strip.component';
+import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import {
+    defaultToolbarFilterState,
+    isToolbarFilterDefault,
+    todayItemMatchesToolbar,
+    type TaskToolbarFilterState,
+} from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 
 export type TodayItem =
     | { kind: 'parent'; task: ParentTask }
@@ -39,7 +57,9 @@ type ChildEditDraft = { title: string; assigneeId: string; scheduledDateStr: str
         MemberNavLinksComponent,
         DragDropModule,
         ProgressMemberShellComponent,
-        MemberProgressBubblesComponent
+        MemberProgressBubblesComponent,
+        ParentTeamProgressStripComponent,
+        TaskSearchFilterToolbarComponent
     ],
     templateUrl: './today-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './today-tasks.css', '../../progress-ai.css']
@@ -49,18 +69,66 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     readonly route = inject(ActivatedRoute);
     readonly progress = inject(ProgressReportingService);
     readonly aiChat = inject(AiChatService);
+    private readonly storage = inject(StorageService);
+    private readonly auth = inject(AuthSessionService);
+    private readonly router = inject(Router);
+    private readonly memberAccess = inject(MemberAccessService);
 
-    readonly projectId = this.route.snapshot.params['projectId'] as string;
-    readonly memberId = this.route.snapshot.params['memberId'] as string;
+    private readonly ctx = new MemberTaskRouteContext(this.route, this.appService, this.auth, this.router);
+
+    private readonly memberRouteGuardEffect = effect(() => {
+        void this.appService.ready();
+        void this.appService.notificationTick();
+        this.ctx.ensureMemberAccess(this.memberAccess);
+    });
+
+    get projectId(): string {
+        return this.ctx.projectId;
+    }
+
+    get memberId(): string {
+        return this.ctx.memberId;
+    }
+
+    /** 右メニュー用 */
+    navLinkMode(): 'member' | 'adminSelf' | 'personal' {
+        if (this.ctx.mode === 'personal') return 'personal';
+        if (this.ctx.mode === 'adminSelf') return 'adminSelf';
+        return 'member';
+    }
+
+    suppressMemberProgressChrome(): boolean {
+        if (this.ctx.mode === 'personal') return true;
+        if (this.ctx.mode === 'adminSelf') {
+            return !this.appService.memberHasInProgressTaskInvolvement(this.projectId, this.memberId);
+        }
+        return false;
+    }
+
+    showMyTaskMentionToolbar(): boolean {
+        return this.ctx.mode !== 'personal';
+    }
+
+    showAdminMentionOption(): boolean {
+        return this.ctx.mode === 'team';
+    }
 
     ngOnInit(): void {
+        if (!this.ctx.ensureMemberAccess(this.memberAccess)) return;
         this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'today');
         this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'today');
+        this.progress.ensureProgressRoundForProject(this.projectId);
+        this.taskChangeUnsub = watchMemberTaskChangeBundle(this.storage, this.projectId, this.memberId, () => {
+            this.refreshMemberTaskChangeBubbleFromStorage();
+        });
+        this.refreshMemberTaskChangeBubbleFromStorage();
         this.startCharacterBubbleLoop();
     }
 
     ngOnDestroy(): void {
         this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, null);
+        this.taskChangeUnsub?.();
+        this.taskChangeUnsub = null;
         this.clearCharacterBubbleTimers();
     }
 
@@ -80,6 +148,10 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return this.progress.bubblesForChildRow(this.projectId, task, child.id, null, child.assigneeId ?? null);
     }
 
+    progressAssigneeBubbleForChild(_task: ParentTask, child: ChildTask) {
+        return this.progress.bubblesForChildAssigneeDisplay(this.projectId, child);
+    }
+
     progressBubblesParentOnly(task: ParentTask) {
         return this.progress.bubblesForParentOnly(this.projectId, task, null);
     }
@@ -89,12 +161,17 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return this.appService.getMemberGearNotificationTotal(this.projectId, this.memberId);
     }
 
-    projectName = this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    get projectName(): string {
+        if (this.ctx.mode === 'personal') return '個人タスク';
+        return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    }
     readonly characterVideoSrc = 'assets/character-typing.mp4';
     characterBubbleVisible = false;
     characterBubbleText = '';
+    memberTaskChangeConfirm = false;
     private characterShowTimerId: number | null = null;
     private characterHideTimerId: number | null = null;
+    private taskChangeUnsub: (() => void) | null = null;
 
     title = '';
     isUrgent = false;
@@ -105,7 +182,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     readonly TOK_ALL = MENTION_ALL;
     readonly TOK_ADMIN = MENTION_ADMIN;
 
-    parentTaskFilterId: string | 'all' = 'all';
+    toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
 
     /** 親の子一覧が 3 件以上のときの展開（today 専用） */
     expandedSubChildren: Record<string, boolean> = {};
@@ -118,10 +195,6 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     childInputs: Record<string, { title: string; assigneeId: string; scheduledDateStr: string; isTodayForNew: boolean }> = {};
 
-    get isTodayFilterAll(): boolean {
-        return this.parentTaskFilterId === 'all';
-    }
-
     get users(): Member[] {
         return this.appService.getMembersByProjectId(this.projectId);
     }
@@ -130,8 +203,8 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return this.users.filter((u) => u.uid !== this.memberId);
     }
 
-    get memberDisplayName(): string {
-        return this.appService.getMemberById(this.memberId)?.name ?? '';
+    get headerSelfBubbles() {
+        return this.progress.bubblesForMemberHeaderDisplay(this.projectId, this.memberId);
     }
 
     isTaskVisibleToMember(t: ParentTask): boolean {
@@ -145,8 +218,8 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return task.createdById === this.memberId;
     }
 
-    /** 「今日やるべきタスク」のリストを、親タスクと子タスクを混ぜ合わせた状態で作成し、優先度順に並べ替える処理 */
-    get todayItems(): TodayItem[] {
+    /** 「今日やるべきタスク」の基準リスト（ツールバー絞り込み前） */
+    get baseTodayItems(): TodayItem[] {
         const items: TodayItem[] = [];
         const parents = this.appService
             .getSortedParentTasksForProject(this.projectId, false)
@@ -162,7 +235,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
             if (!this.appService.childAppearsOnMemberToday(parent, c, this.memberId)) continue;
             items.push({ kind: 'child', task: c, parent });
         }
-        const sorted = items.sort((a, b) => {
+        return items.sort((a, b) => {
             const ao = this.todayOrder(itemKey(a));
             const bo = this.todayOrder(itemKey(b));
             if (ao !== undefined || bo !== undefined) {
@@ -179,14 +252,9 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
             const bd = pb.deadline ? new Date(pb.deadline).getTime() : Number.MAX_SAFE_INTEGER;
             return ad - bd;
         });
-        if (this.parentTaskFilterId === 'all') return sorted;
-        return sorted.filter((it) => {
-            const pid = it.kind === 'parent' ? it.task.id : it.parent.id;
-            return pid === this.parentTaskFilterId;
-        });
     }
 
-    get parentTasksForFilter(): ParentTask[] {
+    get toolbarCandidateParents(): ParentTask[] {
         const ids = new Set<string>();
         for (const p of this.appService.getSortedParentTasksForProject(this.projectId, false)) {
             if ((p.isTodayTask || this.appService.isParentDueToday(p.deadline)) && this.isTaskVisibleToMember(p)) ids.add(p.id);
@@ -202,6 +270,23 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return [...this.appService.getAllParentTasksForProject(this.projectId)]
             .filter((t) => ids.has(t.id))
             .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+    }
+
+    hideToolbarAssigneeFilter(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
+    /** 個人ワークスペースのみ: 進捗アイコン・吹き出し・担当UIを非表示 */
+    hideTeamTaskChrome(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
+    todayListDragEnabled(): boolean {
+        return isToolbarFilterDefault(this.toolbarFilter);
+    }
+
+    get todayItems(): TodayItem[] {
+        return this.baseTodayItems.filter((it) => todayItemMatchesToolbar(this.appService, it, this.toolbarFilter));
     }
 
     trackKey(item: TodayItem): string {
@@ -220,7 +305,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     }
 
     onTodayDrop(ev: CdkDragDrop<void>): void {
-        if (!this.isTodayFilterAll) return;
+        if (!this.todayListDragEnabled()) return;
         const rows = [...this.todayItems];
         if (ev.previousIndex === ev.currentIndex) return;
         moveItemInArray(rows, ev.previousIndex, ev.currentIndex);
@@ -475,7 +560,12 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     getChildInput(parentId: string): { title: string; assigneeId: string; scheduledDateStr: string; isTodayForNew: boolean } {
         if (!this.childInputs[parentId]) {
-            this.childInputs[parentId] = { title: '', assigneeId: '', scheduledDateStr: '', isTodayForNew: false };
+            this.childInputs[parentId] = {
+                title: '',
+                assigneeId: this.hideTeamTaskChrome() ? this.memberId : '',
+                scheduledDateStr: '',
+                isTodayForNew: false
+            };
         }
         return this.childInputs[parentId];
     }
@@ -541,7 +631,8 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     addChildTask(parentTask: ParentTask): void {
         const draft = this.getChildInput(parentTask.id);
-        if (!this.getAssignableMemberIds(parentTask).includes(draft.assigneeId)) {
+        const assigneeId = this.hideTeamTaskChrome() ? this.memberId : draft.assigneeId;
+        if (!this.hideTeamTaskChrome() && !this.getAssignableMemberIds(parentTask).includes(assigneeId)) {
             alert('親タスクの担当・メンバーから担当者を選択してください');
             return;
         }
@@ -554,7 +645,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
             this.projectId,
             parentTask.id,
             draft.title,
-            draft.assigneeId,
+            assigneeId,
             effToday,
             sd,
             this.memberId
@@ -571,7 +662,9 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         if (!confirm('この親タスクと紐づく子タスクをすべて削除しますか？')) return;
         if (this.parentEditTaskId === taskId) this.cancelParentEdit();
         this.appService.deleteParentTask(taskId);
-        if (this.parentTaskFilterId === taskId) this.parentTaskFilterId = 'all';
+        if (this.toolbarFilter.pickParentId === taskId) {
+            this.toolbarFilter = { ...this.toolbarFilter, pickParentId: null };
+        }
     }
 
     enterParentEdit(task: ParentTask, ev?: Event): void {
@@ -671,20 +764,23 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
             alert('子タスクのタイトルを入力してください');
             return;
         }
-        if (!d.assigneeId) {
-            alert('担当メンバーを選択してください');
-            return;
-        }
-        const child = this.appService.childTasks.find((c) => c.id === childId);
-        if (!child || !this.getAssignableMembersByParentId(child.parentTaskId).some((m) => m.uid === d.assigneeId)) {
-            alert('親タスクの担当・メンバーから担当者を選択してください');
-            return;
+        const assigneeId = this.hideTeamTaskChrome() ? this.memberId : d.assigneeId;
+        if (!this.hideTeamTaskChrome()) {
+            if (!assigneeId) {
+                alert('担当メンバーを選択してください');
+                return;
+            }
+            const child = this.appService.childTasks.find((c) => c.id === childId);
+            if (!child || !this.getAssignableMembersByParentId(child.parentTaskId).some((m) => m.uid === assigneeId)) {
+                alert('親タスクの担当・メンバーから担当者を選択してください');
+                return;
+            }
         }
         this.appService.patchChildTask(
             childId,
             {
                 title: d.title,
-                assigneeId: d.assigneeId,
+                assigneeId,
                 scheduledDate: d.scheduledDateStr?.trim() ? d.scheduledDateStr : null
             },
             { actorMemberUid: this.memberId }
@@ -732,7 +828,27 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         this.scheduleCharacterBubble();
     }
 
+    private refreshMemberTaskChangeBubbleFromStorage(): void {
+        const pending = readPendingMemberTaskChangeBubble(this.storage, this.projectId, this.memberId);
+        if (!pending) {
+            this.memberTaskChangeConfirm = false;
+            return;
+        }
+        this.clearCharacterBubbleTimers();
+        this.characterBubbleText = pending.text;
+        this.characterBubbleVisible = true;
+        this.memberTaskChangeConfirm = true;
+    }
+
+    confirmMemberTaskChangeRead(): void {
+        confirmMemberTaskChangeBubble(this.storage, this.projectId, this.memberId);
+        this.memberTaskChangeConfirm = false;
+        this.characterBubbleVisible = false;
+        this.scheduleCharacterBubble();
+    }
+
     private scheduleCharacterBubble(): void {
+        if (this.memberTaskChangeConfirm) return;
         this.clearCharacterBubbleTimers();
         const waitMs = 30000 + Math.floor(Math.random() * 30001);
         this.characterShowTimerId = window.setTimeout(() => {

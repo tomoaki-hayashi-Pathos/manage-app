@@ -1,0 +1,83 @@
+<div class="manage-shell pss-page">
+    <main class="main-area">
+        <header class="project-header card-elevated pss-header-bar">
+            <div class="pss-header-bar__left">
+                <h1 class="pss-header-bar__title">進捗サマリー（個人）</h1>
+                <p class="pss-header-bar__sub">個人タスク @if (memberDisplayName()) { · {{ memberDisplayName() }} }</p>
+            </div>
+            <div class="pss-header-bar__right">
+                <div class="icon-gear-wrap">
+                    <button
+                        type="button"
+                        class="icon-gear"
+                        (click)="toggleRightMenu($event)"
+                        [attr.aria-expanded]="rightMenuOpen"
+                        aria-label="メニューを開く"
+                    >
+                        ⚙
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="pss-body">
+            <div class="pss-stats">
+                <section class="pss-card card-elevated">
+                <h2>完了率</h2>
+                <p class="pss-kpi">{{ completionRate() }}<span class="pss-unit">%</span></p>
+                <p class="pss-note">確定済みの親タスク件数ベース</p>
+            </section>
+
+            <section class="pss-card card-elevated">
+                <h2>ステータス内訳</h2>
+                <ul class="pss-list">
+                    <li>未着手: {{ statusBreakdown()['未着手'] }}</li>
+                    <li>進行中: {{ statusBreakdown()['進行中'] }}</li>
+                    <li>完了: {{ statusBreakdown()['完了'] }}</li>
+                </ul>
+            </section>
+
+            <section class="pss-card card-elevated">
+                <h2>期限の状況（未完了・親タスク）</h2>
+                <ul class="pss-list">
+                    <li>期限超過: {{ deadlineIncomplete().overdue }}</li>
+                    <li>7日以内: {{ deadlineIncomplete().week }}</li>
+                    <li>期限未設定: {{ deadlineIncomplete().none }}</li>
+                </ul>
+                </section>
+            </div>
+
+            <section class="pss-card pss-recent card-elevated">
+                <h2>直近7日に完了したタスク</h2>
+                @if (completedLast7Days().length === 0) {
+                    <p class="pss-empty">該当するタスクはありません。</p>
+                } @else {
+                    <ul class="pss-done">
+                        @for (t of completedLast7Days(); track t.id) {
+                            <li>
+                                <span class="pss-done-title">{{ t.title || '（無題）' }}</span>
+                                <span class="pss-done-at">{{ t.completedAt ? (t.completedAt | date : 'yyyy/MM/dd HH:mm') : '—' }}</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        </div>
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen" aria-label="メニュー">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav side-drawer__nav--member">
+            <app-member-nav-links
+                [projectId]="navProjectId"
+                [memberId]="navMemberId"
+                navMode="personal"
+                [personalOmitSummaryLink]="true"
+                (nav)="closeRightMenu()"
+            />
+        </nav>
+    </aside>
+</div>

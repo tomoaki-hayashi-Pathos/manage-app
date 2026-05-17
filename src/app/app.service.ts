@@ -34,6 +34,8 @@ import {
 } from './core/interface';
 
 import { Router } from '@angular/router';
+import { StorageService } from './services/storage.service';
+import { recordMemberTaskChangeNotifications } from './core/member-task-change-notify.util';
 
 
 
@@ -46,6 +48,7 @@ import { Router } from '@angular/router';
 export class AppService {
     private readonly firestore = inject(Firestore);
     private readonly zone = inject(NgZone);
+    private readonly storage = inject(StorageService);
     private readonly stateDocRef = doc(this.firestore, 'appState', 'primary');
     private hydrated = false;
     private lastPersistedSnapshot = '';
@@ -60,6 +63,24 @@ export class AppService {
 
     projectId: string = crypto.randomUUID();
 
+    /** 個人タスク用の仮想 projectId（Firestore の projects には存在しない） */
+    static personalWorkspaceProjectId(uid: string): string {
+        return `__personal_${uid}`;
+    }
+
+    static isPersonalWorkspaceProjectId(projectId: string | null | undefined): boolean {
+        return !!projectId && projectId.startsWith('__personal_');
+    }
+
+    /** `/personal/*` 用: `projectId` が本人の実体の個人プロジェクトならその id、否则仮想 `__personal_${uid}` */
+    resolvePersonalTaskProjectIdForMember(memberUid: string): string {
+        const proj = this.projects.find((x) => x.id === this.projectId);
+        if (proj?.isPersonal && proj.adminId === memberUid && proj.memberIds.includes(memberUid)) {
+            return this.projectId;
+        }
+        return AppService.personalWorkspaceProjectId(memberUid);
+    }
+
     projects: Project[] = [];
 
     parentTasks: ParentTask[] = [];
@@ -68,6 +89,9 @@ export class AppService {
 
     members: Member[] = [];
     pendingLoginMembers: PendingLoginMember[] = [];
+
+    /** アプリ全体のオーナー（最初のログイン者）。承認済み members の uid */
+    appOwnerUid: string | null = null;
 
     /** 明示的なステータス変更のみ（親子自動同期は含めない） */
     taskStatusChangeLog: TaskStatusChangeLogEntry[] = [];
@@ -96,6 +120,10 @@ export class AppService {
     /** projectId → 現在表示中の管理画面（通知抑制用） */
 
     private adminCurrentNavPage: Partial<Record<string, AdminNavPageKey>> = {};
+
+    /** projectId → 親タスク一覧のソートモード（期限 / ステータス / 手動混在） */
+
+    private parentListSortMode: Partial<Record<string, 'deadline' | 'status' | 'manual'>> = {};
 
 
 
@@ -141,6 +169,7 @@ export class AppService {
         memberNotificationCounts: Record<string, Partial<Record<MemberNavPageKey, number>>>;
         adminNotificationCounts: Record<string, Partial<Record<AdminNavPageKey, number>>>;
         taskStatusChangeLog: TaskStatusChangeLogEntry[];
+        appOwnerUid: string | null;
     } {
         return {
             projectId: this.projectId,
@@ -151,7 +180,8 @@ export class AppService {
             pendingLoginMembers: this.pendingLoginMembers,
             memberNotificationCounts: this.memberNotificationCounts,
             adminNotificationCounts: this.adminNotificationCounts,
-            taskStatusChangeLog: this.taskStatusChangeLog
+            taskStatusChangeLog: this.taskStatusChangeLog,
+            appOwnerUid: this.appOwnerUid
         };
     }
 
@@ -185,10 +215,16 @@ export class AppService {
         memberNotificationCounts: Record<string, Partial<Record<MemberNavPageKey, number>>>;
         adminNotificationCounts: Record<string, Partial<Record<AdminNavPageKey, number>>>;
         taskStatusChangeLog: TaskStatusChangeLogEntry[];
+        appOwnerUid: string | null;
         updatedAt: number;
     }>): void {
         this.projectId = data.projectId || this.projectId;
-        this.projects = Array.isArray(data.projects) ? data.projects : [];
+        this.projects = Array.isArray(data.projects)
+            ? data.projects.map((raw) => {
+                  const p = raw as Project;
+                  return { ...p, isPersonal: !!p.isPersonal };
+              })
+            : [];
         this.parentTasks = Array.isArray(data.parentTasks)
             ? data.parentTasks.map((t) => ({
                   ...t,
@@ -204,8 +240,10 @@ export class AppService {
             : [];
         this.members = Array.isArray(data.members) ? data.members : [];
         this.pendingLoginMembers = Array.isArray(data.pendingLoginMembers) ? data.pendingLoginMembers : [];
+        this.appOwnerUid = typeof data.appOwnerUid === 'string' && data.appOwnerUid ? data.appOwnerUid : null;
         this.memberNotificationCounts = data.memberNotificationCounts ?? {};
         this.adminNotificationCounts = data.adminNotificationCounts ?? {};
+        this.parentListSortMode = {};
         if (data.taskStatusChangeLog !== undefined && Array.isArray(data.taskStatusChangeLog)) {
             this.taskStatusChangeLog = data.taskStatusChangeLog;
         }
@@ -213,6 +251,23 @@ export class AppService {
         this.touchNotifications();
         if (clearedOpenPageCounts) {
             this.markStateChanged();
+        }
+        this.ensureAppOwnerUidAfterLoad();
+    }
+
+    /** Firestore に appOwnerUid が無い既存データ向け。members と整合させる */
+    private ensureAppOwnerUidAfterLoad(): void {
+        if (this.members.length === 0) {
+            this.appOwnerUid = null;
+            return;
+        }
+        if (this.appOwnerUid && !this.members.some((m) => m.uid === this.appOwnerUid)) {
+            this.appOwnerUid = null;
+        }
+        if (!this.appOwnerUid && this.members.length > 0) {
+            const legacy = this.members.find((m) => m.role === '管理者');
+            this.appOwnerUid = legacy?.uid ?? this.members[0].uid;
+            void this.persistIfNeeded();
         }
     }
 
@@ -254,6 +309,7 @@ export class AppService {
                     memberNotificationCounts: Record<string, Partial<Record<MemberNavPageKey, number>>>;
                     adminNotificationCounts: Record<string, Partial<Record<AdminNavPageKey, number>>>;
                     taskStatusChangeLog: TaskStatusChangeLogEntry[];
+                    appOwnerUid: string | null;
                     updatedAt: number;
                 }>;
                 const remoteUpdatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : 0;
@@ -269,6 +325,7 @@ export class AppService {
                     memberNotificationCounts: data.memberNotificationCounts ?? {},
                     adminNotificationCounts: data.adminNotificationCounts ?? {},
                     taskStatusChangeLog: Array.isArray(data.taskStatusChangeLog) ? data.taskStatusChangeLog : [],
+                    appOwnerUid: (data as { appOwnerUid?: string | null }).appOwnerUid ?? null,
                     updatedAt: remoteUpdatedAt
                 });
                 if (nextSnapshot === this.lastPersistedSnapshot) return;
@@ -301,6 +358,7 @@ export class AppService {
                     memberNotificationCounts: Record<string, Partial<Record<MemberNavPageKey, number>>>;
                     adminNotificationCounts: Record<string, Partial<Record<AdminNavPageKey, number>>>;
                     taskStatusChangeLog: TaskStatusChangeLogEntry[];
+                    appOwnerUid: string | null;
                     updatedAt: number;
                 }>;
                 this.applyStateData(data);
@@ -331,6 +389,7 @@ export class AppService {
                 memberNotificationCounts: Record<string, Partial<Record<MemberNavPageKey, number>>>;
                 adminNotificationCounts: Record<string, Partial<Record<AdminNavPageKey, number>>>;
                 taskStatusChangeLog: TaskStatusChangeLogEntry[];
+                appOwnerUid: string | null;
                 updatedAt: number;
             }>;
             const remoteUpdatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : 0;
@@ -353,13 +412,15 @@ export class AppService {
         if (this.members.length > 0) return;
         if (this.pendingLoginMembers.length === 0) return;
         const first = [...this.pendingLoginMembers].sort((a, b) => a.requestedAt - b.requestedAt)[0];
+        const uid = first.uid?.trim() || crypto.randomUUID();
         this.members.push({
-            uid: first.uid?.trim() || crypto.randomUUID(),
+            uid,
             name: first.name.trim() || first.email,
             email: first.email.trim().toLowerCase(),
             photoURL: first.photoURL || '',
-            role: '管理者'
+            role: 'メンバー'
         });
+        this.appOwnerUid = uid;
         this.pendingLoginMembers = this.pendingLoginMembers.filter(
             (x) => x.email.trim().toLowerCase() !== first.email.trim().toLowerCase()
         );
@@ -612,7 +673,11 @@ export class AppService {
 
             const stB = parentBefore?.status;
             const stA = parentAfter.status;
-            if (stA === '完了' && stB !== '完了') {
+            if (
+                stA === '完了' &&
+                stB !== '完了' &&
+                (!this.shouldExcludePrivateMyFromAdmin(parentAfter) || this.isSharedTaskVisibleToAdmin(parentAfter))
+            ) {
                 this.bumpAdminPage(projectId, 'completed', actorMemberUid ?? undefined, { silent: true });
             }
         }
@@ -620,7 +685,26 @@ export class AppService {
         this.markStateChanged();
     }
 
-
+    private notifyMemberTaskFieldChanges(
+        parentBefore: ParentTask,
+        assigneesBefore: string[],
+        parentAfter: ParentTask,
+        assigneesAfter: string[],
+        actorMemberUid?: string | null
+    ): void {
+        recordMemberTaskChangeNotifications(
+            this.storage,
+            parentAfter.projectId,
+            parentBefore,
+            assigneesBefore,
+            parentAfter,
+            assigneesAfter,
+            actorMemberUid ?? null,
+            (pid) => this.getMembersByProjectId(pid),
+            (uid) => this.getMemberById(uid),
+            (pid) => this.getProjectAdminId(pid)
+        );
+    }
 
     /** 親タスクの期限に対する一覧カード用トーン（親カード背景） */
 
@@ -1087,82 +1171,87 @@ export class AppService {
     /** 並び替え: 画面に載っている親の並びを、プロジェクト全体の displayOrder に反映 */
 
     applyParentTaskReorder(projectId: string, visibleParentsInOrder: ParentTask[]): void {
-
+        this.parentListSortMode[projectId] = 'manual';
         const visibleIds = visibleParentsInOrder.map((t) => t.id);
-
-        if (visibleIds.length === 0) return;
-
         const visibleSet = new Set(visibleIds);
-
-        const baseOrder = this.parentTasks
-
-            .filter((t) => t.projectId === projectId && !t.isDraft)
-
-            .sort((a, b) => {
-
-                const ad = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
-
-                const bd = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
-
-                if (ad !== bd) return ad - bd;
-
-                const pr = a.priority === '高' ? 0 : 1;
-
-                const qr = b.priority === '高' ? 0 : 1;
-
-                if (pr !== qr) return pr - qr;
-
-                const da = a.displayOrder ?? 0;
-
-                const db = b.displayOrder ?? 0;
-
-                if (da !== db) return da - db;
-
-                return (a.title || '').localeCompare(b.title || '', 'ja');
-
-            })
-
-            .map((t) => t.id);
-
-        const newOrder: string[] = [];
-
-        let inserted = false;
-
-        for (const id of baseOrder) {
-
-            if (!visibleSet.has(id)) {
-
-                newOrder.push(id);
-
-            } else if (!inserted) {
-
-                newOrder.push(...visibleIds);
-
-                inserted = true;
-
-            }
-
-        }
-
-        if (!inserted) {
-
-            newOrder.push(...visibleIds);
-
-        }
-
-        newOrder.forEach((id, i) => {
-
+        const others = this.parentTasks
+            .filter((t) => t.projectId === projectId && !t.isDraft && !visibleSet.has(t.id))
+            .sort((a, b) => this.compareParentsByDeadlinePriorityTitle(a, b));
+        const merged = [...visibleIds, ...others.map((t) => t.id)];
+        merged.forEach((id, index) => {
             const t = this.parentTasks.find((p) => p.id === id);
-
             if (t && t.projectId === projectId && !t.isDraft) {
-
-                t.displayOrder = i;
-
+                t.displayOrder = index;
             }
-
         });
         this.markStateChanged();
+        alert('並び順を保存しました');
+    }
 
+    /** 全親の displayOrder を消し、期限順表示に戻す */
+
+    resetParentListSortToDeadline(projectId: string): void {
+        for (const t of this.parentTasks) {
+            if (t.projectId === projectId && !t.isDraft) {
+                t.displayOrder = undefined;
+            }
+        }
+        this.parentListSortMode[projectId] = 'deadline';
+        this.markStateChanged();
+        alert('期限順にリセットしました');
+    }
+
+    /** displayOrder を消し、ステータス順（未着手→進行中→完了）で並べる */
+
+    resetParentListSortToStatus(projectId: string): void {
+        for (const t of this.parentTasks) {
+            if (t.projectId === projectId && !t.isDraft) {
+                t.displayOrder = undefined;
+            }
+        }
+        this.parentListSortMode[projectId] = 'status';
+        this.markStateChanged();
+        alert('ステータス順に並べ替えました');
+    }
+
+    private parentListSortResolved(projectId: string): 'deadline' | 'status' | 'manual' {
+        const ex = this.parentListSortMode[projectId];
+        if (ex) return ex;
+        const inProj = this.parentTasks.filter((t) => t.projectId === projectId && !t.isDraft);
+        if (inProj.some((t) => t.displayOrder !== undefined && t.displayOrder !== null)) {
+            return 'manual';
+        }
+        return 'deadline';
+    }
+
+    private statusRankForSort(s: TaskStatus): number {
+        switch (s) {
+            case '未着手':
+                return 0;
+            case '進行中':
+                return 1;
+            case '完了':
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
+    private compareParentsByDeadlinePriorityTitle(a: ParentTask, b: ParentTask): number {
+        const ad = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+        const bd = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+        if (ad !== bd) return ad - bd;
+        const pr = a.priority === '高' ? 0 : 1;
+        const qr = b.priority === '高' ? 0 : 1;
+        if (pr !== qr) return pr - qr;
+        return (a.title || '').localeCompare(b.title || '', 'ja');
+    }
+
+    private compareParentsByStatusThenDeadline(a: ParentTask, b: ParentTask): number {
+        const ra = this.statusRankForSort(a.status);
+        const rb = this.statusRankForSort(b.status);
+        if (ra !== rb) return ra - rb;
+        return this.compareParentsByDeadlinePriorityTitle(a, b);
     }
 
 
@@ -1241,13 +1330,21 @@ export class AppService {
 
             );
 
+            this.notifyMemberTaskFieldChanges(
+                parentBefore,
+                assigneesBefore,
+                parent,
+                this.getChildAssigneeIdsForParent(taskId),
+                actorMemberUid ?? null
+            );
+
         }
 
     }
 
 
 
-    createProject(projectName: string, adminId: string, selectedMemberIds: string[]): void {
+    createProject(projectName: string, adminId: string, selectedMemberIds: string[], isPersonal = false): void {
 
         if (!projectName?.trim()) {
 
@@ -1275,13 +1372,20 @@ export class AppService {
 
             adminId: adminId || selectedMemberIds[0],
 
-            memberIds: [...selectedMemberIds]
+            memberIds: [...selectedMemberIds],
+
+            isPersonal: !!isPersonal
 
         });
 
         this.projectId = newProjectId;
 
-        this.router.navigate(['/admin/manage-tasks', newProjectId]);
+        const leadUid = adminId || selectedMemberIds[0];
+        if (isPersonal && leadUid) {
+            void this.router.navigate(['/personal/today-tasks']);
+        } else {
+            void this.router.navigate(['/admin/manage-tasks', newProjectId]);
+        }
         void this.persistIfNeeded();
 
     }
@@ -1367,27 +1471,12 @@ export class AppService {
 
         const priority: Priority = isUrgent ? '高' : '通常';
 
-
-
-        const orderBase = this.parentTasks.filter((t) => t.projectId === projectId && !t.isDraft);
-
-        const nextOrder = orderBase.length === 0 ? 0 : Math.max(...orderBase.map((t) => t.displayOrder ?? 0)) + 1;
-
-
-
         const dueToday =
-
             !isDraft &&
-
             !!deadline &&
-
             !AppService.deadlineUnset(deadline) &&
-
             this.isParentDueToday(deadline);
-
         const effectiveTodayTask = isTodayTask || dueToday;
-
-
 
         const newParent: ParentTask = {
 
@@ -1417,9 +1506,7 @@ export class AppService {
 
             createdById: createdById ?? null,
 
-            mentionUserIds: mids,
-
-            displayOrder: !isDraft ? nextOrder : undefined
+            mentionUserIds: mids
 
         };
 
@@ -1992,6 +2079,12 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
     getMembersByProjectId(projectId: string): Member[] {
 
+        if (AppService.isPersonalWorkspaceProjectId(projectId)) {
+            const uid = projectId.slice('__personal_'.length);
+            const m = this.getMemberById(uid);
+            return m ? [m] : [];
+        }
+
         const project = this.projects.find((p) => p.id === projectId);
 
         if (!project || !project.memberIds) {
@@ -2050,6 +2143,36 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
     }
 
+    /** 子あり親で親ストリップの吹き出しを隠す（全子未着手のときは親に表示） */
+    shouldHideParentProgressSpeech(parentTaskId: string): boolean {
+        const children = this.getChildTasksByParentId(parentTaskId);
+        if (children.length === 0) return false;
+        return children.some((c) => c.status !== '未着手');
+    }
+
+    /** 進行中の親・子にメンバーが関与しているか */
+    memberHasInProgressTaskInvolvement(projectId: string, memberUid: string): boolean {
+        if (!memberUid?.trim() || AppService.isPersonalWorkspaceProjectId(projectId)) return false;
+        for (const p of this.parentTasks) {
+            if (p.projectId !== projectId || p.isDraft) continue;
+            const onTeam = p.leadAssigneeId === memberUid || p.memberIds.includes(memberUid);
+            if (onTeam && p.status === '進行中') return true;
+        }
+        for (const c of this.childTasks) {
+            if (c.projectId !== projectId) continue;
+            if (c.assigneeId === memberUid && c.status === '進行中') return true;
+        }
+        return false;
+    }
+
+    /** 進捗確認ラウンドの対象（責任者は進行中関与があるときのみ） */
+    shouldReceiveProgressCheck(projectId: string, memberUid: string): boolean {
+        const project = this.projects.find((p) => p.id === projectId);
+        if (!project || AppService.isPersonalWorkspaceProjectId(projectId)) return false;
+        if (project.adminId !== memberUid) return true;
+        return this.memberHasInProgressTaskInvolvement(projectId, memberUid);
+    }
+
 
 
     /** プロジェクトに属する親タスク（絞り込み用・下書き含む） */
@@ -2098,8 +2221,6 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
         const assigneesBefore = this.getChildAssigneeIdsForParent(taskId);
 
-        const wasDraft = t.isDraft;
-
         if (patch.title !== undefined) t.title = patch.title.trim();
 
         if (patch.description !== undefined) t.description = patch.description;
@@ -2126,25 +2247,6 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
         this.recalcParentDraft(t);
 
-        if (!t.isDraft && wasDraft && t.displayOrder === undefined) {
-
-            const maxOther = Math.max(
-
-                0,
-
-                ...this.parentTasks
-
-                    .filter((x) => x.projectId === t.projectId && !x.isDraft && x.id !== t.id)
-
-                    .map((x) => x.displayOrder ?? 0)
-
-            );
-
-            t.displayOrder = maxOther + 1;
-
-        }
-
-
 
         if (patch.deadline !== undefined) {
 
@@ -2159,6 +2261,14 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
             const assigneesAfter = this.getChildAssigneeIdsForParent(taskId);
 
             this.notifyParentListDeltas(parentBefore, assigneesBefore, t, assigneesAfter, options?.actorMemberUid ?? null);
+
+            this.notifyMemberTaskFieldChanges(
+                parentBefore,
+                assigneesBefore,
+                t,
+                assigneesAfter,
+                options?.actorMemberUid ?? null
+            );
 
         }
         void this.persistIfNeeded();
@@ -2482,35 +2592,33 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
 
 
-    /** 同一プロジェクト内の親タスクを表示用にソート（期限昇順 → 高優先度 → displayOrder） */
+    /** 同一プロジェクト内の親タスクを表示用にソート */
 
     getSortedParentTasksForProject(projectId: string, includeDraft: boolean): ParentTask[] {
 
         const list = this.parentTasks.filter((t) => t.projectId === projectId && (includeDraft || !t.isDraft));
 
-        return list.sort((a, b) => {
+        const mode = this.parentListSortResolved(projectId);
 
-            const ad = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+        if (mode === 'deadline') {
 
-            const bd = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+            return [...list].sort((a, b) => this.compareParentsByDeadlinePriorityTitle(a, b));
 
-            if (ad !== bd) return ad - bd;
+        }
 
-            const pr = a.priority === '高' ? 0 : 1;
+        if (mode === 'status') {
 
-            const qr = b.priority === '高' ? 0 : 1;
+            return [...list].sort((a, b) => this.compareParentsByStatusThenDeadline(a, b));
 
-            if (pr !== qr) return pr - qr;
+        }
 
-            const ao = a.displayOrder ?? 0;
+        const hasManualOrder = (t: ParentTask) => t.displayOrder !== undefined && t.displayOrder !== null;
 
-            const bo = b.displayOrder ?? 0;
+        const without = list.filter((t) => !hasManualOrder(t)).sort((a, b) => this.compareParentsByDeadlinePriorityTitle(a, b));
 
-            if (ao !== bo) return ao - bo;
+        const withOrder = list.filter((t) => hasManualOrder(t)).sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
 
-            return (a.title || '').localeCompare(b.title || '', 'ja');
-
-        });
+        return [...without, ...withOrder];
 
     }
 
@@ -2565,9 +2673,10 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
         void this.persistIfNeeded();
     }
 
-    approvePendingMembers(emails: string[], role: '' | '管理者' | 'メンバー' | 'ゲスト'): void {
+    approvePendingMembers(emails: string[], _role: '' | '管理者' | 'メンバー' | 'ゲスト'): void {
         const targets = new Set(emails.map((x) => x.trim().toLowerCase()).filter(Boolean));
         if (targets.size === 0) return;
+        const approvedRole: Member['role'] = 'メンバー';
         for (const p of [...this.pendingLoginMembers]) {
             const em = p.email.trim().toLowerCase();
             if (!targets.has(em)) continue;
@@ -2575,14 +2684,14 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
             if (exists) {
                 exists.name = p.name || exists.name;
                 exists.photoURL = p.photoURL || exists.photoURL;
-                exists.role = role || exists.role;
+                exists.role = approvedRole;
             } else {
                 this.members.push({
                     uid: p.uid || crypto.randomUUID(),
                     name: p.name,
                     email: p.email,
                     photoURL: p.photoURL || '',
-                    role
+                    role: approvedRole
                 });
             }
         }
@@ -2591,6 +2700,10 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
     }
 
     removeMemberByUid(uid: string): void {
+        if (this.appOwnerUid === uid) {
+            alert('オーナーは削除できません。先にオーナーを他のメンバーに譲渡してください。');
+            return;
+        }
         this.members = this.members.filter((m) => m.uid !== uid);
         this.projects = this.projects.map((p) => ({
             ...p,
@@ -2607,7 +2720,55 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
             ...c,
             assigneeId: c.assigneeId === uid ? '' : c.assigneeId
         }));
+        this.touchNotifications();
         void this.persistIfNeeded();
+    }
+
+    /** プロジェクトの責任者（adminId）を引き継ぐ。新責任者は memberIds に含まれている必要がある */
+
+    transferProjectAdmin(projectId: string, newAdminUid: string): void {
+        const p = this.projects.find((x) => x.id === projectId);
+        if (!p || newAdminUid === p.adminId) return;
+        if (!p.memberIds.includes(newAdminUid)) return;
+        p.adminId = newAdminUid;
+        this.markStateChanged();
+    }
+
+    /** プロジェクトの memberIds から外す（責任者は不可） */
+
+    removeMemberFromProject(projectId: string, memberUid: string): void {
+        const p = this.projects.find((x) => x.id === projectId);
+        if (!p) return;
+        if (p.adminId === memberUid) {
+            alert('責任者は先に他のメンバーに引き継いでから削除してください。');
+            return;
+        }
+        p.memberIds = p.memberIds.filter((id) => id !== memberUid);
+        this.markStateChanged();
+    }
+
+    /** メンバーのアプリ全体ロール。プロジェクト責任者のまま「メンバー」にはできない。成功時 true */
+
+    setMemberAppRole(uid: string, role: '管理者' | 'メンバー'): boolean {
+        const m = this.members.find((x) => x.uid === uid);
+        if (!m) return false;
+        if (m.role === role) return true;
+        if (role === 'メンバー' && m.role === '管理者') {
+            const adminCount = this.members.filter((x) => x.role === '管理者').length;
+            if (adminCount <= 1) {
+                alert('アプリ上の最後の管理者は外せません。');
+                return false;
+            }
+            for (const p of this.projects) {
+                if (p.adminId === uid) {
+                    alert('プロジェクトの責任者になっている間はアプリ権限を「メンバー」にできません。先に責任者を引き継いでください。');
+                    return false;
+                }
+            }
+        }
+        m.role = role;
+        this.markStateChanged();
+        return true;
     }
 
     getMemberByEmail(email: string | null | undefined): Member | undefined {
@@ -2995,6 +3156,38 @@ cycleChildTaskStatus(childTaskId: string, actorUid?: string | null): void {
 
         return this.projects.find((p) => p.id === projectId)?.adminId;
 
+    }
+
+    isAppOwner(uid: string | null | undefined): boolean {
+        return !!uid && !!this.appOwnerUid && uid === this.appOwnerUid;
+    }
+
+    transferAppOwnership(newOwnerUid: string): void {
+        const m = this.members.find((x) => x.uid === newOwnerUid);
+        if (!m) return;
+        this.appOwnerUid = newOwnerUid;
+        this.markStateChanged();
+    }
+
+    /** タスク・プロジェクト・承認待ちを消去し、オーナー本人のみ残す */
+    resetAppWorkspaceForOwner(): void {
+        const owner = this.members.find((x) => x.uid === this.appOwnerUid);
+        if (!owner) {
+            alert('オーナー情報が見つかりません。');
+            return;
+        }
+        this.members = [{ ...owner, role: 'メンバー' }];
+        this.appOwnerUid = owner.uid;
+        this.pendingLoginMembers = [];
+        this.projects = [];
+        this.parentTasks = [];
+        this.childTasks = [];
+        this.memberNotificationCounts = {};
+        this.adminNotificationCounts = {};
+        this.taskStatusChangeLog = [];
+        this.projectId = crypto.randomUUID();
+        this.touchNotifications();
+        this.markStateChanged();
     }
 
 }

@@ -1,0 +1,8 @@
+<div class="entry">
+  <div class="card">
+    <h1>承認待ち</h1>
+    <p class="pending">オーナーによる承認が完了するまでお待ちください。タスク管理は利用できません。</p>
+    <p class="hint">ログイン中: {{ auth.user()?.displayName || auth.user()?.email }}</p>
+    <button type="button" class="btn btn-ghost" (click)="logout()">ログアウト</button>
+  </div>
+</div>

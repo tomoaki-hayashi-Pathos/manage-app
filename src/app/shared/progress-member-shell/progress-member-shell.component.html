@@ -1,10 +1,12 @@
-<div class="stagnation-action-bar">
-    <button type="button" class="btn-stagnation-report" (click)="openManualStagnationModal()">停滞報告 😢</button>
-    @if (isStagnatingSelf()) {
-        <span class="stagnation-action-bar__elapsed">停滞中！ 停滞から {{ stagnationElapsed() }}</span>
-        <button type="button" class="btn-resolve-stagnation" (click)="openResolveStagnationModal()">解決！</button>
-    }
-</div>
+@if (!suppressProgressStagnationUi) {
+    <div class="stagnation-action-bar">
+        <button type="button" class="btn-stagnation-report" (click)="openManualStagnationModal()">停滞報告 😢</button>
+        @if (isStagnatingSelf()) {
+            <span class="stagnation-action-bar__elapsed">停滞中！ 停滞から {{ stagnationElapsed() }}</span>
+            <button type="button" class="btn-resolve-stagnation" (click)="openResolveStagnationModal()">解決！</button>
+        }
+    </div>
+}
 
 @if (showOlDock) {
     <div class="ol-dock">
@@ -15,7 +17,7 @@
     </div>
 }
 
-@if (progress.isAwaitingInitial(projectId, memberId) && stagnationPhase === null) {
+@if (!suppressProgressStagnationUi && progress.isAwaitingInitial(projectId, memberId) && stagnationPhase === null) {
     <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="prog-init-title">
         <div class="modal-panel progress-shell-modal">
             <h3 id="prog-init-title">進捗確認</h3>
@@ -31,7 +33,7 @@
     </div>
 }
 
-@if (stagnationPhase === 'consult') {
+@if (!suppressProgressStagnationUi && stagnationPhase === 'consult') {
     <div class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-panel progress-shell-modal progress-shell-modal--consult">
             <div class="progress-shell-modal__consult-head">
@@ -66,7 +68,7 @@
     </div>
 }
 
-@if (stagnationPhase === 'done-pick') {
+@if (!suppressProgressStagnationUi && stagnationPhase === 'done-pick') {
     <div class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-panel progress-shell-modal">
             <h3>もう終わる</h3>
@@ -89,7 +91,7 @@
     </div>
 }
 
-@if (stagnationPhase === 'manual') {
+@if (!suppressProgressStagnationUi && stagnationPhase === 'manual') {
     <div class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-panel progress-shell-modal">
             <h3>停滞報告</h3>
@@ -127,7 +129,7 @@
     </div>
 }
 
-@if (stagnationPhase === 'after-stagnation') {
+@if (!suppressProgressStagnationUi && stagnationPhase === 'after-stagnation') {
     <div class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-panel progress-shell-modal">
             <p>送信しました。追加で停滞報告しますか？</p>
@@ -139,7 +141,7 @@
     </div>
 }
 
-@if (stagnationPhase === 'resolve') {
+@if (!suppressProgressStagnationUi && stagnationPhase === 'resolve') {
     <div class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-panel progress-shell-modal">
             <h3>停滞を解決</h3>

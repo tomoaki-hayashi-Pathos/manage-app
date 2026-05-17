@@ -1,16 +1,26 @@
 import { Component, HostListener, effect, inject, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppService } from '../../app.service';
 import { ParentTask, Member, AdminNavPageKey } from '../../core/interface';
 import { MemberNavLinksComponent } from './member-nav-links';
 import { AdminProjectAccessService } from '../../services/admin-project-access.service';
+import { AuthSessionService } from '../../services/auth-session.service';
+import { MemberTaskRouteContext, readMemberTaskRouteMode } from './member-task-route-context';
+import { MemberAccessService } from '../../services/member-access.service';
+import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import {
+    defaultToolbarFilterState,
+    parentMatchesToolbarFilters,
+    type TaskToolbarFilterState,
+} from '../../shared/task-search-filter-toolbar/task-search-filter.util';
+import { showAdminDrawerLink, type AdminDrawerNavTarget } from '../admin/admin-drawer-nav.util';
 
 @Component({
     selector: 'app-completed-tasks',
     standalone: true,
-    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent],
+    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
     templateUrl: './completed-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './completed-tasks.css']
 })
@@ -18,20 +28,46 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
     private readonly adminAccess = inject(AdminProjectAccessService);
+    private readonly auth = inject(AuthSessionService);
+    private readonly router = inject(Router);
+    private readonly memberAccess = inject(MemberAccessService);
 
-    readonly projectId = this.route.snapshot.params['projectId'] as string;
-    readonly memberId = this.route.snapshot.params['memberId'] as string | undefined;
+    private readonly ctx = new MemberTaskRouteContext(this.route, this.appService, this.auth, this.router);
+
+    get projectId(): string {
+        return this.ctx.projectId;
+    }
+
+    get memberId(): string | undefined {
+        if (this.isAdminView) return undefined;
+        const id = this.ctx.memberId;
+        return id || undefined;
+    }
+
+    navLinkMode(): 'member' | 'adminSelf' | 'personal' {
+        if (this.ctx.mode === 'personal') return 'personal';
+        if (this.ctx.mode === 'adminSelf') return 'adminSelf';
+        return 'member';
+    }
+
     private readonly accessEffect = effect(() => {
-        if (this.isAdminView) this.adminAccess.redirectIfForbidden(this.projectId);
+        if (this.isAdminView) {
+            this.adminAccess.redirectIfForbidden(this.projectId);
+            return;
+        }
+        void this.appService.ready();
+        void this.appService.notificationTick();
+        this.ctx.ensureMemberAccess(this.memberAccess);
     });
 
-    parentTaskFilterId: string | 'all' = 'all';
+    toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
     rightMenuOpen = false;
 
     /** 一括未完了用チェック */
     selected: Record<string, boolean> = {};
 
     ngOnInit(): void {
+        if (!this.isAdminView && !this.ctx.ensureMemberAccess(this.memberAccess)) return;
         if (this.isAdminView) {
             this.appService.setAdminCurrentNavPage(this.projectId, 'completed');
             this.appService.clearAdminPageNotifications(this.projectId, 'completed');
@@ -59,7 +95,13 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     }
 
     get isAdminView(): boolean {
-        return this.memberId === undefined;
+        if (readMemberTaskRouteMode(this.route) === 'personal') return false;
+        return !this.route.snapshot.paramMap.get('memberId');
+    }
+
+    /** チーム管理の完了ページと同様の「全完了削除」（個人ワークスペースでも利用可） */
+    showBulkDeleteCompletedButton(): boolean {
+        return this.isAdminView || this.ctx.mode === 'personal';
     }
 
     adminNavBadge(page: AdminNavPageKey): number {
@@ -67,7 +109,12 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
         return this.appService.getAdminPageNotificationCount(this.projectId, page);
     }
 
+    showAdminDrawerNav(target: AdminDrawerNavTarget): boolean {
+        return showAdminDrawerLink(this.router, this.projectId, target);
+    }
+
     get projectName(): string {
+        if (this.ctx.mode === 'personal') return '個人タスク';
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
@@ -77,7 +124,13 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
 
     get completedList(): ParentTask[] {
         let list = this.appService.parentTasks.filter((t) => t.projectId === this.projectId && t.status === '完了');
-        if (!this.isAdminView && this.memberId) {
+        if (this.isAdminView) {
+            list = list.filter(
+                (t) =>
+                    !this.appService.shouldExcludePrivateMyFromAdmin(t) ||
+                    this.appService.isSharedTaskVisibleToAdmin(t)
+            );
+        } else if (this.memberId) {
             list = list.filter(
                 (t) => t.leadAssigneeId === this.memberId || (t.memberIds && t.memberIds.includes(this.memberId!))
             );
@@ -89,16 +142,25 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
         });
     }
 
-    get parentTasksForFilter(): ParentTask[] {
-        return [...this.completedList].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+    get users(): Member[] {
+        return this.appService.getMembersByProjectId(this.projectId);
+    }
+
+    get toolbarCandidateParents(): ParentTask[] {
+        return [...this.completedList];
+    }
+
+    hideToolbarAssigneeFilter(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
+    /** 個人ワークスペースのみ: 担当・メンバー表示を非表示 */
+    hideTeamTaskChrome(): boolean {
+        return this.ctx.mode === 'personal';
     }
 
     get visibleCompleted(): ParentTask[] {
-        let list = this.completedList;
-        if (this.parentTaskFilterId !== 'all') {
-            list = list.filter((t) => t.id === this.parentTaskFilterId);
-        }
-        return list;
+        return this.completedList.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
     }
 
     toggleSelect(taskId: string, checked: boolean): void {
@@ -128,7 +190,7 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     }
 
     deleteAllCompletedLogs(): void {
-        if (!this.isAdminView) return;
+        if (!this.showBulkDeleteCompletedButton()) return;
         const n = this.appService.parentTasks.filter((t) => t.projectId === this.projectId && t.status === '完了').length;
         if (n === 0) return;
         if (!confirm(`完了済みタスク ${n} 件をすべて削除しますか？（元に戻せません）`)) return;

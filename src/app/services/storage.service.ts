@@ -18,6 +18,14 @@ export function storageKeyConsultationBundle(projectId: string): string {
   return `${STORAGE_PREFIX}consultationBundle:v1:${projectId}`;
 }
 
+export function storageKeyMemberTaskChangeBundle(projectId: string, memberId: string): string {
+  return `${STORAGE_PREFIX}memberTaskChangeBundle:v1:${projectId}:${memberId}`;
+}
+
+export function storageKeyAdminTaskChangeBundle(projectId: string): string {
+  return `${STORAGE_PREFIX}adminTaskChangeBundle:v1:${projectId}`;
+}
+
 interface AiMemberContextState {
   messages: ChatMessage[];
   conversationSummary: string;

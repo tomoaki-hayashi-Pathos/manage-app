@@ -16,33 +16,34 @@
     flex-wrap: wrap;
 }
 
-.btn-today-create {
-    flex: 1 1 100px;
-    min-height: 38px;
-    border: 2px solid #ccc;
+.btn-today-add {
+    display: block;
+    width: 100%;
+    margin: 0.5rem 0 0.65rem;
+    min-height: 40px;
+    border: 2px solid #f9a825;
     border-radius: 12px;
-    background: #f0f0f0;
-    font-size: 0.88rem;
+    background: #ffeb3b;
+    color: #111;
+    font-size: 0.9rem;
     font-weight: 800;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition:
-        background 0.2s,
-        color 0.2s,
-        border-color 0.2s;
+    box-shadow: 0 2px 10px rgba(249, 168, 37, 0.35);
 }
 
-.btn-today-create--on {
-    background: #ffeb3b;
-    border-color: #f9a825;
-    color: #111;
-    box-shadow: 0 2px 12px rgba(249, 168, 37, 0.45);
+.btn-today-add:hover {
+    background: #fff176;
 }
 
 .limit-header {
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 0.35rem 0.5rem;
+}
+
+.header-self-identity {
+    flex-shrink: 0;
+    align-self: center;
 }
 
 .limit-header__titles {
@@ -96,6 +97,117 @@
         transform 0.1s;
 }
 
+/* 親タイトル＋今日やる（limit）／タイトル＋親アクション（today）：左列を少し空け子タスク行の余白を確保 */
+.limit-tasks .parent-info__lead-stack {
+    width: 100%;
+    max-width: calc(100% - 1.5cm);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.limit-tasks .parent-info__lead-stack .btn-parent-today {
+    box-sizing: border-box;
+}
+
+/* 親：今日やる（6）＋ステータス（4）、合計幅は従来の今日やる列幅のまま */
+.limit-tasks .limit-parent-today-status-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    align-items: stretch;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    margin: 0.55rem 0 0.2rem;
+}
+
+.limit-tasks .limit-parent-today-status-row .limit-parent-today-btn {
+    flex: 6 1 0;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+}
+
+.limit-parent-status-btn {
+    flex: 4 1 0;
+    min-width: 0;
+    border: 2px solid #aaa;
+    border-radius: 14px;
+    padding: 0.55rem 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-sizing: border-box;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    transition:
+        background 0.2s,
+        color 0.2s,
+        border-color 0.2s,
+        filter 0.15s;
+}
+
+.limit-parent-status-btn:hover:not(:disabled) {
+    filter: brightness(1.03);
+}
+
+.limit-parent-status-btn:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+.limit-parent-status-btn--todo {
+    background: linear-gradient(180deg, #f5f5f5 0%, #d9d9d9 100%);
+    color: #222;
+    border-color: #999;
+}
+
+.limit-parent-status-btn--prog {
+    background: linear-gradient(180deg, #fffde7 0%, #ffe082 100%);
+    color: #222;
+    border-color: #f9a825;
+}
+
+.limit-parent-status-btn--done {
+    background: linear-gradient(180deg, #e3f2fd 0%, #90caf9 100%);
+    color: #0d47a1;
+    border-color: #1565c0;
+}
+
+/* 子：担当のみ、今日やるの下に同寸のステータスボタン（バッジはそのまま） */
+.subtask-assignee-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.subtask-assignee-actions .btn-today-pill--row {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.limit-child-status-btn.limit-child-status-btn--todo {
+    background: #f3f3f3;
+    border-color: #ccc;
+    color: #222;
+}
+
+.limit-child-status-btn.limit-child-status-btn--prog {
+    background: linear-gradient(180deg, #fffde7 0%, #ffe082 100%);
+    border-color: #f9a825;
+    color: #222;
+}
+
+.limit-child-status-btn.limit-child-status-btn--done {
+    background: linear-gradient(180deg, #e3f2fd 0%, #bbdefb 100%);
+    border-color: #1565c0;
+    color: #0d47a1;
+}
+
 .btn-parent-today:hover {
     filter: brightness(1.03);
 }
@@ -143,10 +255,4 @@
 .subtask-item--today {
     background: linear-gradient(180deg, #fffde7 0%, #ffeb3b 55%) !important;
     border-color: #f9a825 !important;
-}
-
-.limit-tasks .parent-card__toolbar {
-    top: 0.45rem;
-    left: 0.55rem;
-    right: auto;
 }

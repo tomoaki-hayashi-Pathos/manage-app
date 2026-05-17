@@ -34,6 +34,25 @@ export interface ConsultationProjectBundle {
   adminDismissedAt: number;
 }
 
+/** 親タスク変更のメンバー向け AI 吹き出し1件 */
+export interface MemberTaskChangeEntry {
+  id: string;
+  message: string;
+  at: number;
+}
+
+/** メンバー×プロジェクト単位の変更通知バンドル */
+export interface MemberTaskChangeBundle {
+  entries: MemberTaskChangeEntry[];
+  memberDismissedAt: number;
+}
+
+/** 責任者向け：メンバーによる親タスク変更通知バンドル */
+export interface AdminTaskChangeBundle {
+  entries: MemberTaskChangeEntry[];
+  adminDismissedAt: number;
+}
+
 export type ProgressBubbleKind =
   | '問題なし'
   | '考え中'
@@ -86,6 +105,11 @@ export interface MemberProgressRoundState {
   preResponseSnapshot?: ProgressMemberSnapshot | null;
   /** 進捗確認「もう終わる」で選択したアンカー（キー: parentId::childId 空は親行） */
   anchorDoneKeys?: string[];
+  /**
+   * 進捗確認回答時点で fan-out 対象だった行（parentId::childId、親のみは child 空）。
+   * 含まれない進行中行は「進行中」吹き出し until 次ラウンド等。
+   */
+  fanoutCoveredKeys?: string[];
 }
 
 export interface ChatMessage {

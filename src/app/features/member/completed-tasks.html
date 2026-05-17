@@ -14,16 +14,16 @@
                 <span class="ct-btn-revert__icon" aria-hidden="true">☑</span>
                 未完了に戻す
             </button>
-            <div class="project-header__filter">
-                <span class="filter-label">タスク絞り込み</span>
-                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="ctf">
-                    <option [ngValue]="'all'">タスクを選んでください</option>
-                    @for (t of parentTasksForFilter; track t.id) {
-                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
-                    }
-                </select>
+            <div class="project-header__filter project-header__filter--toolbar">
+                <app-task-search-filter-toolbar
+                    [filter]="toolbarFilter"
+                    (filterChange)="toolbarFilter = $event"
+                    [members]="users"
+                    [candidateParents]="toolbarCandidateParents"
+                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                />
             </div>
-            @if (isAdminView) {
+            @if (showBulkDeleteCompletedButton()) {
                 <button type="button" class="ct-header-delete" (click)="deleteAllCompletedLogs()" title="全完了ログ削除" aria-label="全完了ログ削除">
                     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
                         <path
@@ -67,6 +67,7 @@
                             </div>
                             <div class="ct-card__right">
                                 <p class="ct-done-at">{{ formatCompletedAt(task) }}</p>
+                                @if (!hideTeamTaskChrome()) {
                                 <div class="avatar-stack-wrap ct-assignees">
                                     <span class="avatar-stack-label">担当・メンバー</span>
                                     <div class="avatar-stack">
@@ -84,6 +85,7 @@
                                         }
                                     </div>
                                 </div>
+                                }
                             </div>
                         </div>
                     </article>
@@ -99,23 +101,37 @@
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
         <nav class="side-drawer__nav side-drawer__nav--member">
             @if (memberId) {
-                <app-member-nav-links [projectId]="projectId" [memberId]="memberId" (nav)="closeRightMenu()" />
+                <app-member-nav-links
+                    [projectId]="projectId"
+                    [memberId]="memberId!"
+                    [navMode]="navLinkMode()"
+                    [currentNavKey]="'completed'"
+                    (nav)="closeRightMenu()"
+                />
             } @else {
-                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
-                <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
-                <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                    @if (adminNavBadge('shared') > 0) {
-                        <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
-                    }
-                    共有するタスク
-                </a>
-                <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                    @if (adminNavBadge('completed') > 0) {
-                        <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
-                    }
-                    完了したタスク
-                </a>
-                <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
+                @if (showAdminDrawerNav('manage')) {
+                    <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                }
+                @if (showAdminDrawerNav('ops')) {
+                    <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+                }
+                @if (showAdminDrawerNav('shared')) {
+                    <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('shared') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                        }
+                        共有するタスク
+                    </a>
+                }
+                @if (showAdminDrawerNav('completed')) {
+                    <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('completed') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                        }
+                        完了したタスク
+                    </a>
+                }
+                <a routerLink="/member/hub" class="side-drawer__item" (click)="closeRightMenu()">メンバーページに戻る</a>
             }
         </nav>
     </aside>

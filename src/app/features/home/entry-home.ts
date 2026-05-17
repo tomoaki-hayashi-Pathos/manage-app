@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, effect, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { Component, inject, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { AppService } from '../../app.service';
 import { AuthSessionService } from '../../services/auth-session.service';
@@ -8,55 +7,35 @@ import { AuthSessionService } from '../../services/auth-session.service';
 @Component({
   selector: 'app-entry-home',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule],
   templateUrl: './entry-home.html',
   styleUrl: './entry-home.css'
 })
-export class EntryHomeComponent {
+export class EntryHomeComponent implements OnInit {
   readonly app = inject(AppService);
   readonly auth = inject(AuthSessionService);
   private readonly router = inject(Router);
 
-  memberProjectId = '';
+  ngOnInit(): void {
+    const id = window.setInterval(() => {
+      if (!this.app.ready() || this.auth.loading()) return;
+      const user = this.auth.user();
+      const email = this.auth.currentEmail();
+      // 未ログインのまま ready になっても、ここでタイマーを止めない（ログイン直後に遷移できる）
+      if (!user || !email) return;
 
-  readonly me = computed(() => {
-    this.app.notificationTick();
-    return this.app.getMemberByEmail(this.auth.currentEmail());
-  });
-  readonly isApproved = computed(() => !!this.me());
-  readonly isAdmin = computed(() => this.me()?.role === '管理者');
-  readonly assignedProjects = computed(() => {
-    this.app.notificationTick();
-    const uid = this.me()?.uid;
-    if (!uid) return [];
-    return this.app.projects.filter((p) => p.memberIds.includes(uid));
-  });
-
-  private readonly adminRedirectEffect = effect(() => {
-    if (!this.app.ready() || this.auth.loading()) return;
-    if (this.me()?.role !== '管理者') return;
-    void this.router.navigate(['/admin/menu']);
-  });
+      window.clearInterval(id);
+      const m = this.app.getMemberByEmail(email);
+      if (!m) {
+        void this.router.navigate(['/pending-approval']);
+        return;
+      }
+      if (this.app.isAppOwner(m.uid)) void this.router.navigate(['/owner/menu']);
+      else void this.router.navigate(['/member/hub']);
+    }, 50);
+  }
 
   async login(): Promise<void> {
     await this.auth.signInWithGoogle();
-  }
-
-  async logout(): Promise<void> {
-    await this.auth.logout();
-  }
-
-  goProjectCreateEdit(): void {
-    void this.router.navigate(['/admin/create-project']);
-  }
-
-  goProjectApproval(): void {
-    void this.router.navigate(['/admin/create-member']);
-  }
-
-  openMemberProject(): void {
-    const mid = this.me()?.uid;
-    if (!mid || !this.memberProjectId) return;
-    void this.router.navigate(['/member/today-tasks', this.memberProjectId, mid]);
   }
 }

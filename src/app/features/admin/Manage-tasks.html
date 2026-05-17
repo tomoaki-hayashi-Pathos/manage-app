@@ -1,7 +1,7 @@
-<div class="manage-shell manage-tasks-page">
+﻿<div class="manage-shell manage-tasks-page">
     <aside class="sidebar card-elevated">
         <div class="sidebar__inner">
-            <div class="sidebar__scroll">
+            <div #sidebarScroll class="sidebar__scroll">
             <label class="field-label" for="pt-title">タイトル欄</label>
             <input
                 id="pt-title"
@@ -10,6 +10,8 @@
                 placeholder="タイトル"
                 [(ngModel)]="title"
                 name="title"
+                (blur)="onCreateTitleBlur()"
+                (keydown.enter)="onCreateTitleEnter($event)"
             />
 
             <label class="field-label" for="pt-dl">期限</label>
@@ -47,25 +49,32 @@
             </div>
 
             <label class="field-label">担当｜メンバー（チェック順：1人目が担当）</label>
-            <div class="member-checkboxes">
-                @for (user of users; track user.uid) {
-                    <label class="member-check">
-                        <input
-                            type="checkbox"
-                            [checked]="isMemberChecked(user.uid)"
-                            (change)="onMemberCheckboxChange(user.uid, $any($event.target).checked)"
-                        />
-                        <span class="member-check__name">{{ user.name }}</span>
-                    </label>
-                } @empty {
-                    <p class="hint">プロジェクトにメンバーがいません</p>
-                }
-            </div>
+            @if (users.length >= 2) {
+                <button type="button" class="btn-member-assign-toggle" (click)="toggleCreateMemberAssignSection()">
+                    {{ createMemberAssignSectionOpen ? '▼ 折りたたむ' : '▶ 担当・メンバーを選択' }}
+                </button>
+            }
+            @if (users.length < 2 || createMemberAssignSectionOpen) {
+                <div class="member-checkboxes">
+                    @for (user of users; track user.uid) {
+                        <label class="member-check">
+                            <input
+                                type="checkbox"
+                                [checked]="isMemberChecked(user.uid)"
+                                (change)="onMemberCheckboxChange(user.uid, $any($event.target).checked)"
+                            />
+                            <span class="member-check__name">{{ user.name }}</span>
+                        </label>
+                    } @empty {
+                        <p class="hint">プロジェクトにメンバーがいません</p>
+                    }
+                </div>
+            }
 
-            <label class="field-label" for="pt-desc">備考欄</label>
+            <label class="field-label" for="pt-desc">備考欄・コメント</label>
             <div class="textarea-mention-wrap">
                 <div class="mention-toolbar" (click)="$event.stopPropagation()">
-                    <button type="button" class="btn-mention" (click)="mentionPopoverOpen = !mentionPopoverOpen">@ メンション</button>
+                    <button type="button" class="btn-mention" (click)="mentionPopoverOpen = !mentionPopoverOpen">共有</button>
                     @if (mentionPopoverOpen) {
                         <div class="mention-popover" role="listbox">
                             <label class="mention-row">
@@ -85,7 +94,7 @@
                     id="pt-desc"
                     class="textarea-pill textarea-pill--with-mention"
                     rows="3"
-                    placeholder="備考欄"
+                    placeholder="備考欄・コメント"
                     [(ngModel)]="description"
                     name="description"
                 ></textarea>
@@ -94,17 +103,21 @@
             <button type="button" class="btn-confirm" (click)="createParentTask()">確定</button>
 
             <div class="incomplete-block">
-                <button type="button" class="btn-incomplete-header" (click)="incompleteSectionOpen = !incompleteSectionOpen">
-                    <span>設定未完成タスク一覧</span>
-                    <span class="btn-incomplete-header__icons">
-                        <span class="icon-refresh" aria-hidden="true">↻</span>
-                        <span class="chevron" [class.chevron--open]="incompleteSectionOpen">▼</span>
-                    </span>
-                </button>
-                @if (incompleteSectionOpen) {
-                    <div class="incomplete-body">
-                        <button type="button" class="btn-mode" (click)="toggleViewMode()">{{ viewModeLabel }}</button>
-                        <ul class="incomplete-list">
+                <div class="incomplete-section-title" role="heading" aria-level="3">設定未完成タスク一覧</div>
+                <div class="incomplete-body">
+                    <div class="incomplete-mode-unified" role="group" aria-label="未入力一覧の表示モード">
+                        <span class="incomplete-mode-unified__label">{{ viewModeLabel }}</span>
+                        <button
+                            type="button"
+                            class="btn-mode-unified-refresh"
+                            (click)="toggleViewMode()"
+                            title="表示を切り替え"
+                            aria-label="表示を切り替え"
+                        >
+                            <span class="icon-refresh" aria-hidden="true">↻</span>
+                        </button>
+                    </div>
+                    <ul class="incomplete-list">
                             @for (task of filteredIncompleteTasks; track task.id) {
                                 <li class="incomplete-list__item">
                                     @if (sidebarIncompleteEditId === task.id && sidebarIncompleteDraft; as sd) {
@@ -169,9 +182,8 @@
                             } @empty {
                                 <li class="incomplete-list__empty">該当するタスクはありません</li>
                             }
-                        </ul>
-                    </div>
-                }
+                    </ul>
+                </div>
             </div>
             </div>
 
@@ -198,17 +210,38 @@
     </aside>
 
     <main class="main-area">
+        @if (adminShowsProgressMemberShell) {
+            <app-progress-member-shell
+                [projectId]="projectId"
+                [memberId]="adminSelfMemberUid"
+                [parentTasks]="progressShellParents"
+                [showOlDock]="false"
+                [suppressProgressStagnationUi]="false"
+            />
+        }
         <header class="project-header card-elevated project-header--with-progress">
             <button type="button" class="btn-progress-check" (click)="requestProgressCheck()">進捗を確認</button>
+            @if (headerSelfBubbles.length) {
+                <app-member-progress-bubbles
+                    class="header-self-identity"
+                    layout="single"
+                    [slidingName]="true"
+                    [showAvatar]="true"
+                    [showSpeechBubble]="false"
+                    [bubbles]="headerSelfBubbles"
+                />
+            }
             <h1 class="project-header__title">{{ projectName || 'プロジェクト' }}</h1>
-            <div class="project-header__filter">
-                <span class="filter-label">タスクを選んでください</span>
-                <select class="select-pill" [(ngModel)]="parentTaskFilterId" name="parentTaskFilterId">
-                    <option [ngValue]="'all'">すべて表示</option>
-                    @for (t of parentTasksForFilter; track t.id) {
-                        <option [ngValue]="t.id">{{ t.title || '（無題）' }}</option>
-                    }
-                </select>
+            <div class="project-header__filter project-header__filter--toolbar">
+                <app-task-search-filter-toolbar
+                    [filter]="toolbarFilter"
+                    (filterChange)="toolbarFilter = $event"
+                    [members]="users"
+                    [candidateParents]="toolbarCandidateParents"
+                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    [showSortMenu]="true"
+                    (parentSortPicked)="onParentSortPick($event)"
+                />
             </div>
             <div class="icon-gear-wrap">
                 @if (gearNotifyTotal > 0) {
@@ -218,7 +251,7 @@
             </div>
         </header>
 
-        <div class="parent-list" cdkDropList (cdkDropListDropped)="onParentDrop($event)">
+        <div class="parent-list" cdkDropList [cdkDropListDisabled]="!parentListDragEnabled()" (cdkDropListDropped)="onParentDrop($event)">
             <span class="progress-revision-dummy" aria-hidden="true">{{ progress.progressRevision().t }}</span>
             @for (task of visibleParentTasks; track task.id) {
                 <article cdkDrag [ngClass]="'parent-card card-elevated ' + parentDlClass(task)">
@@ -255,7 +288,7 @@
                                     </div>
                                     <label class="field-label">タイトル</label>
                                     <input class="input-pill" [(ngModel)]="ed.title" name="pet-{{ task.id }}" />
-                                    <label class="field-label">タスク詳細</label>
+                                    <label class="field-label">備考欄・コメント</label>
                                     <textarea class="textarea-pill" rows="3" [(ngModel)]="ed.description" name="ped-{{ task.id }}"></textarea>
                                     <label class="field-label">メンション</label>
                                     <div class="member-checkboxes member-checkboxes--wrap">
@@ -314,53 +347,18 @@
                                         <span [class]="statusClass(task.status)">{{ task.status }}</span>
                                     </div>
                                     <div class="detail-box">
-                                        <span class="detail-box__label">タスク詳細</span>
+                                        <span class="detail-box__label">備考欄・コメント</span>
                                         <p class="detail-box__text">{{ task.description || '—' }}</p>
                                     </div>
                                     <p class="edit-hint">クリックして編集</p>
                                 </div>
                             }
 
-                            <div class="avatar-stack-wrap">
-                                <span class="avatar-stack-label">担当・メンバー</span>
-                                <div class="avatar-role-row">
-                                    <span class="avatar-role-label">担当</span>
-                                    <div class="avatar-stack avatar-stack--lead">
-                                        @if (leadMember(task); as lead) {
-                                            <div class="avatar-stack__chip avatar-stack__chip--lead" [title]="lead.name">
-                                                @if (lead.photoURL) {
-                                                    <img [src]="lead.photoURL" [alt]="lead.name" />
-                                                } @else {
-                                                    <span class="avatar-stack__fallback">{{ initials(lead.name) }}</span>
-                                                }
-                                                <span class="avatar-stack__name">{{ lead.name }}</span>
-                                            </div>
-                                        } @else {
-                                            <span class="hint">未設定</span>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="avatar-role-row">
-                                    <span class="avatar-role-label">メンバー</span>
-                                    <div class="avatar-stack">
-                                        @for (m of memberList(task); track m.uid) {
-                                            <div class="avatar-stack__chip" [title]="m.name">
-                                                @if (m.photoURL) {
-                                                    <img [src]="m.photoURL" [alt]="m.name" />
-                                                } @else {
-                                                    <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
-                                                }
-                                                <span class="avatar-stack__name">{{ m.name }}</span>
-                                            </div>
-                                        } @empty {
-                                            <span class="hint">未設定</span>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                            @if (appService.getChildTasksByParentId(task.id).length === 0) {
-                                <app-member-progress-bubbles layout="row" [bubbles]="progressBubblesParentOnly(task)" />
-                            }
+                            <app-parent-team-progress-strip
+                                [parent]="task"
+                                [bubbles]="progressBubblesParentOnly(task)"
+                                [hideProgressSpeech]="appService.shouldHideParentProgressSpeech(task.id)"
+                            />
                         </section>
 
                         <section class="subtask-col">
@@ -373,7 +371,7 @@
                                     name="ctitle-{{ task.id }}"
                                 />
                                 <select class="select-pill subtask-form__member" [(ngModel)]="getChildInput(task.id).assigneeId" name="cass-{{ task.id }}">
-                                    <option value="">担当メンバー</option>
+                                    <option value="">担当</option>
                                     @for (u of getAssignableMembers(task); track u.uid) {
                                         <option [value]="u.uid">{{ u.name }}</option>
                                     }
@@ -431,15 +429,20 @@
                                                 </span>
                                                 <div class="subtask-progress-stack">
                                                     <app-member-progress-bubbles layout="inline" [showAvatar]="false" [bubbles]="progressBubblesForChild(task, c)" />
-                                                    <button type="button" class="subtask-assign-hit" (click)="enterChildEdit(c, $event)" title="担当を編集">
-                                                        @if (appService.getMemberById(c.assigneeId); as cm) {
-                                                            <span class="subtask-item__avatar">
-                                                                @if (cm.photoURL) {
-                                                                    <img [src]="cm.photoURL" [alt]="cm.name" />
-                                                                } @else {
-                                                                    <span class="subtask-item__avatar-fallback">{{ initials(cm.name) }}</span>
-                                                                }
-                                                            </span>
+                                                    @let assigneeBubs = progressAssigneeBubbleForChild(task, c);
+                                                    <button
+                                                        type="button"
+                                                        class="subtask-assign-hit subtask-assign-hit--dock"
+                                                        (click)="enterChildEdit(c, $event)"
+                                                        title="担当を編集"
+                                                    >
+                                                        @if (assigneeBubs.length > 0) {
+                                                            <app-member-progress-bubbles
+                                                                layout="single"
+                                                                [slidingName]="true"
+                                                                [showAvatar]="true"
+                                                                [bubbles]="assigneeBubs"
+                                                            />
                                                         }
                                                     </button>
                                                 </div>
@@ -471,20 +474,29 @@
     <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen" aria-label="ショートカットメニュー">
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
         <nav class="side-drawer__nav">
-            <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
-            <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                @if (adminNavBadge('shared') > 0) {
-                    <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
-                }
-                共有するタスク
-            </a>
-            <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
-                @if (adminNavBadge('completed') > 0) {
-                    <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
-                }
-                完了したタスク
-            </a>
-            <a routerLink="/top" class="side-drawer__item" (click)="closeRightMenu()">トップへ戻る</a>
+            @if (showAdminDrawerNav('ops')) {
+                <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+            }
+            @if (showAdminDrawerNav('shared')) {
+                <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('shared') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                    }
+                    共有するタスク
+                </a>
+            }
+            @if (showAdminDrawerNav('completed')) {
+                <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                    @if (adminNavBadge('completed') > 0) {
+                        <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                    }
+                    完了したタスク
+                </a>
+            }
+            @if (adminSelfMemberUid) {
+                <a [routerLink]="['/admin/my-tasks', projectId, adminSelfMemberUid, 'today-tasks']" class="side-drawer__item side-drawer__item--back-manage" (click)="closeRightMenu()">責任者用タスク管理ページ</a>
+            }
+            <a routerLink="/member/hub" class="side-drawer__item side-drawer__item--back-hub" (click)="closeRightMenu()">メンバーページに戻る</a>
         </nav>
     </aside>
 

@@ -17,7 +17,7 @@ import {
   storageKeyProgressState,
   storageKeyThinkingNudge
 } from './storage.service';
-import type { Member } from '../core/interface';
+import type { Member, TaskStatus } from '../core/interface';
 
 export const PARENT_PROGRESS_ROW = '__parent__';
 
@@ -65,7 +65,8 @@ function emptyMemberState(roundId: string): MemberProgressRoundState {
     thinkingChatSnippet: '',
     thinkingDetailLong: '',
     preResponseSnapshot: null,
-    anchorDoneKeys: undefined
+    anchorDoneKeys: undefined,
+    fanoutCoveredKeys: undefined
   };
 }
 
@@ -231,7 +232,8 @@ export class ProgressReportingService {
       thinkingChatSnippet: st.thinkingChatSnippet ?? '',
       thinkingDetailLong: st.thinkingDetailLong ?? '',
       preResponseSnapshot: st.preResponseSnapshot ? this.normalizeSnapshot(st.preResponseSnapshot) : st.preResponseSnapshot ?? undefined,
-      anchorDoneKeys: Array.isArray(st.anchorDoneKeys) ? [...st.anchorDoneKeys] : undefined
+      anchorDoneKeys: Array.isArray(st.anchorDoneKeys) ? [...st.anchorDoneKeys] : undefined,
+      fanoutCoveredKeys: Array.isArray(st.fanoutCoveredKeys) ? [...st.fanoutCoveredKeys] : undefined
     };
   }
 
@@ -327,6 +329,49 @@ export class ProgressReportingService {
     const keys = st?.anchorDoneKeys;
     if (!keys?.length) return false;
     return keys.includes(this.anchorKey(parentTaskId, childTaskId));
+  }
+
+  /** 回答時点で進行中だった親・子行（担当メンバー基準） */
+  private captureFanoutCoveredKeys(projectId: string, memberId: string): string[] {
+    const keys: string[] = [];
+    for (const p of this.app.parentTasks) {
+      if (p.projectId !== projectId) continue;
+      if (!this.isMemberOfParentTeam(p, memberId)) continue;
+      if (p.status === '進行中') {
+        keys.push(this.anchorKey(p.id, null));
+      }
+      for (const c of this.app.getChildTasksByParentId(p.id)) {
+        if (c.status === '進行中' && c.assigneeId === memberId) {
+          keys.push(this.anchorKey(p.id, c.id));
+        }
+      }
+    }
+    return keys;
+  }
+
+  private assignFanoutCoveredKeys(projectId: string, memberId: string, st: MemberProgressRoundState): void {
+    st.fanoutCoveredKeys = this.captureFanoutCoveredKeys(projectId, memberId);
+  }
+
+  /** スナップショット無しの旧データは従来どおり fan-out */
+  private isFanoutCovered(st: MemberProgressRoundState, parentTaskId: string, childTaskId: string | null): boolean {
+    const keys = st.fanoutCoveredKeys;
+    if (!keys?.length) return true;
+    return keys.includes(this.anchorKey(parentTaskId, childTaskId));
+  }
+
+  private tryUncoveredInProgressBubble(
+    st: MemberProgressRoundState,
+    mem: Member,
+    rid: string,
+    parentTaskId: string,
+    childTaskId: string | null,
+    keySuffix: string,
+    taskInProgress: boolean
+  ): ProgressBubbleVm[] | null {
+    if (!taskInProgress || st.stage !== 'done') return null;
+    if (this.isFanoutCovered(st, parentTaskId, childTaskId)) return null;
+    return [this.syntheticInProgressVm(mem, rid, keySuffix)];
   }
 
   private stagnationDisplaySource(st: MemberProgressRoundState): {
@@ -462,15 +507,75 @@ export class ProgressReportingService {
     this.saveProgressToStorage();
   }
 
+  /**
+   * 親チーム進捗ストリップのアイコン表示用。
+   * まだラウンドが無いプロジェクトだけ最小ラウンドを作成し永続化する。
+   */
+  ensureProgressRoundForProject(projectId: string): void {
+    if (this.activeRoundIdByProject.has(projectId)) return;
+    this.ensureMinimalRound(projectId);
+    this.bump();
+  }
+
   isMemberOfParentTeam(parent: { leadAssigneeId: string | null; memberIds: string[] }, memberId: string): boolean {
     if (parent.leadAssigneeId === memberId) return true;
     return parent.memberIds.includes(memberId);
   }
 
-  /** 管理者: 全員に 3 択を促す */
+  /**
+   * 子タスク行の担当アバター＋スライド名用（進捗ラウンドに依存しない）。0 または 1 件。
+   */
+  bubblesForChildAssigneeDisplay(
+    projectId: string,
+    child: { id: string; assigneeId: string | null }
+  ): ProgressBubbleVm[] {
+    const aid = child.assigneeId?.trim() ?? '';
+    if (!aid) return [];
+    const mem = this.app.getMembersByProjectId(projectId).find((m) => m.uid === aid);
+    if (!mem) return [];
+    return [
+      {
+        memberId: mem.uid,
+        memberName: mem.name,
+        memberPhotoUrl: mem.photoURL ?? null,
+        short: '',
+        detail: '',
+        isStagnating: false,
+        expandDetailOnHover: false,
+        bubbleKey: `child-assignee-display::${child.id}::${mem.uid}`,
+        alwaysShowDetail: false
+      }
+    ];
+  }
+
+  /** ヘッダー用：ログイン／表示中メンバーのアバター＋スライド名（進捗ラウンド非依存） */
+  bubblesForMemberHeaderDisplay(projectId: string, memberId: string): ProgressBubbleVm[] {
+    const uid = memberId?.trim() ?? '';
+    if (!uid) return [];
+    const mem =
+      this.app.getMembersByProjectId(projectId).find((m) => m.uid === uid) ?? this.app.getMemberById(uid);
+    if (!mem) return [];
+    return [
+      {
+        memberId: mem.uid,
+        memberName: mem.name,
+        memberPhotoUrl: mem.photoURL ?? null,
+        short: '',
+        detail: '',
+        isStagnating: false,
+        expandDetailOnHover: false,
+        bubbleKey: `header-identity::${projectId}::${mem.uid}`,
+        alwaysShowDetail: false
+      }
+    ];
+  }
+
+  /** 管理者: 参加メンバーに 3 択を促す（責任者は進行中関与があるときのみ） */
   requestProgressReport(projectId: string, aiDeferredMemberIds: Set<string>): void {
     const oldRid = this.activeRoundIdByProject.get(projectId);
-    const members = this.app.getMembersByProjectId(projectId);
+    const members = this.app
+      .getMembersByProjectId(projectId)
+      .filter((m) => this.app.shouldReceiveProgressCheck(projectId, m.uid));
     const snapByMember = new Map<string, ProgressMemberSnapshot>();
     for (const m of members) {
       if (oldRid) {
@@ -510,7 +615,8 @@ export class ProgressReportingService {
         thinkingChatSnippet: '',
         thinkingDetailLong: '',
         preResponseSnapshot: snap,
-        anchorDoneKeys: undefined
+        anchorDoneKeys: undefined,
+        fanoutCoveredKeys: undefined
       };
       this.memberStates.set(this.key(projectId, round.id, m.uid), st);
     }
@@ -565,6 +671,7 @@ export class ProgressReportingService {
       st.stagnationSessionStartedAt = null;
       st.preResponseSnapshot = undefined;
       st.anchorDoneKeys = undefined;
+      this.assignFanoutCoveredKeys(projectId, memberId, st);
       this.clearThinkingFields(st);
       this.bump();
     }
@@ -601,6 +708,7 @@ export class ProgressReportingService {
     st.stage = 'done';
     st.initialChoice = '要相談';
     st.anchorDoneKeys = undefined;
+    this.assignFanoutCoveredKeys(projectId, memberId, st);
     this.clearThinkingFields(st);
     this.bump();
   }
@@ -630,6 +738,7 @@ export class ProgressReportingService {
         (sg) => !(sg.parentTaskId === pid && (sg.childTaskId ?? null) === cid)
       );
     }
+    this.assignFanoutCoveredKeys(projectId, memberId, st);
     this.reconcileBubbleAfterStagnationChange(st);
     this.clearThinkingFields(st);
     this.bump();
@@ -652,6 +761,7 @@ export class ProgressReportingService {
     }
     st.rowFallbackShort = '問題なし';
     st.rowFallbackDetail = '初期報告で停滞を付けなかったタスクは問題なしとして表示します。';
+    this.assignFanoutCoveredKeys(projectId, memberId, st);
     this.bump();
   }
 
@@ -687,6 +797,9 @@ export class ProgressReportingService {
     for (const it of items) {
       if (!it.parentTaskId || !it.reason?.trim()) continue;
       this.applyStagnation(projectId, memberId, st2, it.parentTaskId, it.childTaskId, it.reason.trim());
+    }
+    if (st2.stage === 'done' && !st2.fanoutCoveredKeys?.length) {
+      this.assignFanoutCoveredKeys(projectId, memberId, st2);
     }
     this.bump();
   }
@@ -894,6 +1007,181 @@ export class ProgressReportingService {
     return this.rowFallbackSyntheticState(st).detailForHover;
   }
 
+  private stagnationsOnRow(
+    st: MemberProgressRoundState,
+    parentTaskId: string,
+    childTaskId: string | null
+  ): StagnationEntry[] {
+    const src = this.stagnationDisplaySource(st);
+    return src.stagnations.filter(
+      (sg) => sg.parentTaskId === parentTaskId && (sg.childTaskId ?? null) === (childTaskId ?? null)
+    );
+  }
+
+  /**
+   * タスク行の吹き出し（表示層）。進捗ラウンド未登録でも進行中なら合成表示する。
+   * 優先: 行の停滞 → 回答待ち → もう終わる → 親要約 → fan-out 未カバー進行中 → 空/合成
+   */
+  private resolveMemberRowBubbles(
+    parent: { id: string; leadAssigneeId: string | null; memberIds: string[] },
+    mem: Member,
+    rid: string,
+    keySuffix: string,
+    taskStatus: TaskStatus,
+    childTaskId: string | null,
+    st: MemberProgressRoundState | null,
+    parentSummaryWithChildren = false
+  ): ProgressBubbleVm[] {
+    const parentTaskId = parent.id;
+    const inProgress = taskStatus === '進行中';
+    const emptyKey = `${mem.uid}::empty::${rid}${keySuffix}`;
+
+    if (taskStatus === '未着手' || taskStatus === '完了') {
+      if (st) {
+        const todoStalls = this.stagnationsOnRow(st, parentTaskId, childTaskId);
+        if (todoStalls.length > 0) {
+          return todoStalls.map((sg) =>
+            this.toStagnationBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, sg)
+          );
+        }
+        if (
+          childTaskId !== null &&
+          this.shouldShowAwaitingForChildRow(st, parent, mem.uid, taskStatus)
+        ) {
+          return [this.awaitingResponseBubbleVm(mem, rid, keySuffix)];
+        }
+        if (
+          childTaskId === null &&
+          this.shouldShowAwaitingForParentSummary(st, parent, mem.uid, taskStatus)
+        ) {
+          return [this.awaitingResponseBubbleVm(mem, rid, keySuffix)];
+        }
+      }
+      return [this.emptyContentBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, emptyKey)];
+    }
+
+    if (!st) {
+      return [this.syntheticInProgressVm(mem, rid, keySuffix)];
+    }
+
+    const rowStalls = this.stagnationsOnRow(st, parentTaskId, childTaskId);
+    if (rowStalls.length > 0) {
+      return rowStalls.map((sg) =>
+        this.toStagnationBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, sg)
+      );
+    }
+
+    if (childTaskId !== null) {
+      if (this.shouldShowAwaitingForChildRow(st, parent, mem.uid, taskStatus)) {
+        return [this.awaitingResponseBubbleVm(mem, rid, keySuffix)];
+      }
+    } else if (this.shouldShowAwaitingForParentSummary(st, parent, mem.uid, taskStatus)) {
+      return [this.awaitingResponseBubbleVm(mem, rid, keySuffix)];
+    }
+
+    if (this.hasAnchorDone(st, parentTaskId, childTaskId)) {
+      return [this.doneAnchorBubbleVm(mem, rid, keySuffix)];
+    }
+
+    if (parentSummaryWithChildren && childTaskId === null && st.bubbleShort === '停滞中！') {
+      const stallsHere = st.stagnations.filter((sg) => sg.parentTaskId === parentTaskId);
+      const parentOnly = stallsHere.filter((sg) => sg.childTaskId == null);
+      const childOnly = stallsHere.filter((sg) => sg.childTaskId != null);
+      if (parentOnly.length === 0) {
+        if (this.matchesResolvedAnchor(st, parentTaskId, null)) {
+          return [
+            this.toStatusBubbleVm(
+              mem.uid,
+              mem.name,
+              mem.photoURL ?? null,
+              {
+                ...this.rowFallbackSyntheticState(st),
+                bubbleShort: '問題なし',
+                detailForHover: '停滞を解決しました。'
+              },
+              keySuffix
+            )
+          ];
+        }
+        const syn = this.rowFallbackSyntheticState(st);
+        let detail = syn.detailForHover;
+        if (childOnly.length > 0) {
+          detail = [detail, '子タスク行の吹き出しで停滞内容を確認できます。'].filter(Boolean).join(' ');
+        } else if (stallsHere.length === 0) {
+          detail = [detail, 'この親タスクでは停滞報告はありません。'].filter(Boolean).join(' ');
+        }
+        return [
+          this.toStatusBubbleVm(
+            mem.uid,
+            mem.name,
+            mem.photoURL ?? null,
+            { ...syn, detailForHover: detail },
+            keySuffix
+          )
+        ];
+      }
+    }
+
+    const uncovered = this.tryUncoveredInProgressBubble(
+      st,
+      mem,
+      rid,
+      parentTaskId,
+      childTaskId,
+      keySuffix,
+      inProgress
+    );
+    if (uncovered) return uncovered;
+
+    if (!st.bubbleShort?.trim()) {
+      return [this.syntheticInProgressVm(mem, rid, keySuffix)];
+    }
+
+    if (FANOUT_STATUS_LABELS.has(st.bubbleShort)) {
+      if (st.stage === 'done') {
+        return [
+          this.toStatusBubbleVm(
+            mem.uid,
+            mem.name,
+            mem.photoURL ?? null,
+            { ...st, detailForHover: this.fanoutDetailForRow(st, parentTaskId, childTaskId) },
+            keySuffix
+          )
+        ];
+      }
+      return [this.syntheticInProgressVm(mem, rid, keySuffix)];
+    }
+
+    if (st.bubbleShort === '停滞中！') {
+      if (this.matchesResolvedAnchor(st, parentTaskId, childTaskId)) {
+        return [
+          this.toStatusBubbleVm(
+            mem.uid,
+            mem.name,
+            mem.photoURL ?? null,
+            {
+              ...this.rowFallbackSyntheticState(st),
+              bubbleShort: '問題なし',
+              detailForHover: '停滞を解決しました。'
+            },
+            keySuffix
+          )
+        ];
+      }
+      return [
+        this.toStatusBubbleVm(
+          mem.uid,
+          mem.name,
+          mem.photoURL ?? null,
+          this.rowFallbackSyntheticState(st),
+          keySuffix
+        )
+      ];
+    }
+
+    return [];
+  }
+
   bubblesForChildRow(
     projectId: string,
     parent: { id: string; leadAssigneeId: string | null; memberIds: string[] },
@@ -932,89 +1220,8 @@ export class ProgressReportingService {
     if (!child) return [];
 
     const keySuf = `::c::${parent.id}::${childId}`;
-    if (child.status === '未着手' || child.status === '完了') {
-      return [
-        this.emptyContentBubbleVm(
-          mem.uid,
-          mem.name,
-          mem.photoURL ?? null,
-          `${mem.uid}::empty::${rid}${keySuf}`
-        )
-      ];
-    }
-
-    const st = this.memberStates.get(this.key(projectId, rid, mem.uid));
-    if (!st) {
-      return [this.syntheticInProgressVm(mem, rid, keySuf)];
-    }
-
-    if (child.status === '進行中' && this.shouldShowAwaitingForChildRow(st, parent, mem.uid, child.status)) {
-      return [this.awaitingResponseBubbleVm(mem, rid, keySuf)];
-    }
-    if (this.hasAnchorDone(st, parent.id, childId)) {
-      return [this.doneAnchorBubbleVm(mem, rid, keySuf)];
-    }
-
-    if (!st.bubbleShort?.trim()) {
-      return [this.syntheticInProgressVm(mem, rid, keySuf)];
-    }
-
-    const out: ProgressBubbleVm[] = [];
-
-    if (st.bubbleShort === '停滞中！') {
-      for (const sg of st.stagnations) {
-        if (sg.parentTaskId !== parent.id || sg.childTaskId !== childId) continue;
-        out.push(this.toStagnationBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, sg));
-      }
-      if (out.length > 0) return out;
-      if (this.matchesResolvedAnchor(st, parent.id, childId)) {
-        out.push(
-          this.toStatusBubbleVm(
-            mem.uid,
-            mem.name,
-            mem.photoURL ?? null,
-            {
-              ...this.rowFallbackSyntheticState(st),
-              bubbleShort: '問題なし',
-              detailForHover: '停滞を解決しました。'
-            },
-            keySuf
-          )
-        );
-        return out;
-      }
-    }
-
-    if (FANOUT_STATUS_LABELS.has(st.bubbleShort)) {
-      if (st.stage === 'done') {
-        out.push(
-          this.toStatusBubbleVm(
-            mem.uid,
-            mem.name,
-            mem.photoURL ?? null,
-            { ...st, detailForHover: this.fanoutDetailForRow(st, parent.id, childId) },
-            keySuf
-          )
-        );
-      } else {
-        out.push(this.syntheticInProgressVm(mem, rid, keySuf));
-      }
-      return out;
-    }
-    if (st.bubbleShort === '停滞中！') {
-      out.push(
-        this.toStatusBubbleVm(
-          mem.uid,
-          mem.name,
-          mem.photoURL ?? null,
-          this.rowFallbackSyntheticState(st),
-          keySuf
-        )
-      );
-      return out;
-    }
-
-    return out;
+    const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
+    return this.resolveMemberRowBubbles(parent, mem, rid, keySuf, child.status, childId, st);
   }
 
   /** viewerMemberId が null のとき親チーム全員の吹き出し（管理・メンバー共通） */
@@ -1031,7 +1238,7 @@ export class ProgressReportingService {
 
     const keyP = `::p::${parent.id}`;
     if (parentTask.status === '未着手' || parentTask.status === '完了') {
-      return this.emptyBubblesForParentTeam(projectId, parent, viewerMemberId, rid, keyP);
+      return this.emptyBubblesForParentTeam(projectId, parent, viewerMemberId, rid, keyP, parentTask.status);
     }
 
     const children = this.app.getChildTasksByParentId(parent.id);
@@ -1042,61 +1249,19 @@ export class ProgressReportingService {
     for (const mem of this.app.getMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
-      const st = this.memberStates.get(this.key(projectId, rid, mem.uid));
-      if (!st) continue;
-
-      if (parentTask.status === '進行中' && this.shouldShowAwaitingForParentSummary(st, parent, mem.uid, parentTask.status)) {
-        out.push(this.awaitingResponseBubbleVm(mem, rid, keyP));
-        continue;
-      }
-      if (this.hasAnchorDone(st, parent.id, null)) {
-        out.push(this.doneAnchorBubbleVm(mem, rid, keyP));
-        continue;
-      }
-
-      if (!st.bubbleShort?.trim()) {
-        out.push(this.syntheticInProgressVm(mem, rid, keyP));
-        continue;
-      }
-
-      if (FANOUT_STATUS_LABELS.has(st.bubbleShort)) {
-        if (st.stage === 'done') {
-          out.push(
-            this.toStatusBubbleVm(
-              mem.uid,
-              mem.name,
-              mem.photoURL ?? null,
-              { ...st, detailForHover: this.fanoutDetailForRow(st, parent.id, null) },
-              keyP
-            )
-          );
-        } else {
-          out.push(this.syntheticInProgressVm(mem, rid, keyP));
-        }
-        continue;
-      }
-      if (st.bubbleShort === '停滞中！') {
-        const stallsHere = st.stagnations.filter((sg) => sg.parentTaskId === parent.id);
-        const parentOnly = stallsHere.filter((sg) => sg.childTaskId == null);
-        const childOnly = stallsHere.filter((sg) => sg.childTaskId != null);
-        for (const sg of parentOnly) {
-          out.push(this.toStagnationBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, sg));
-        }
-        if (parentOnly.length === 0) {
-          const syn = this.rowFallbackSyntheticState(st);
-          let detail = syn.detailForHover;
-          if (this.matchesResolvedAnchor(st, parent.id, null)) {
-            detail = '停滞を解決しました。';
-          } else if (childOnly.length > 0) {
-            detail = [detail, '子タスク行の吹き出しで停滞内容を確認できます。'].filter(Boolean).join(' ');
-          } else if (stallsHere.length === 0) {
-            detail = [detail, 'この親タスクでは停滞報告はありません。'].filter(Boolean).join(' ');
-          }
-          out.push(
-            this.toStatusBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, { ...syn, detailForHover: detail }, keyP)
-          );
-        }
-      }
+      const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
+      out.push(
+        ...this.resolveMemberRowBubbles(
+          parent,
+          mem,
+          rid,
+          keyP,
+          parentTask.status,
+          null,
+          st,
+          true
+        )
+      );
     }
     return out;
   }
@@ -1114,72 +1279,18 @@ export class ProgressReportingService {
 
     const keyA = `::anchor::${parent.id}`;
     if (parentTask.status === '未着手' || parentTask.status === '完了') {
-      return this.emptyBubblesForParentTeam(projectId, parent, viewerMemberId, rid, keyA);
+      return this.emptyBubblesForParentTeam(projectId, parent, viewerMemberId, rid, keyA, parentTask.status);
     }
 
     const out: ProgressBubbleVm[] = [];
     for (const mem of this.app.getMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
-      const st = this.memberStates.get(this.key(projectId, rid, mem.uid));
-      if (!st) continue;
-
-      if (parentTask.status === '進行中' && this.shouldShowAwaitingForParentSummary(st, parent, mem.uid, parentTask.status)) {
-        out.push(this.awaitingResponseBubbleVm(mem, rid, keyA));
-        continue;
-      }
-      if (this.hasAnchorDone(st, parent.id, null)) {
-        out.push(this.doneAnchorBubbleVm(mem, rid, keyA));
-        continue;
-      }
-
-      if (!st.bubbleShort?.trim()) {
-        out.push(this.syntheticInProgressVm(mem, rid, keyA));
-        continue;
-      }
       if (anchor !== PARENT_PROGRESS_ROW) continue;
-
-      if (st.bubbleShort === '停滞中！') {
-        const matching = st.stagnations.filter(
-          (sg) => sg.parentTaskId === parent.id && sg.childTaskId == null
-        );
-        for (const sg of matching) {
-          out.push(this.toStagnationBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, sg));
-        }
-        if (matching.length > 0) continue;
-      }
-
-      if (FANOUT_STATUS_LABELS.has(st.bubbleShort)) {
-        if (st.stage === 'done') {
-          out.push(
-            this.toStatusBubbleVm(
-              mem.uid,
-              mem.name,
-              mem.photoURL ?? null,
-              { ...st, detailForHover: this.fanoutDetailForRow(st, parent.id, null) },
-              keyA
-            )
-          );
-        } else {
-          out.push(this.syntheticInProgressVm(mem, rid, keyA));
-        }
-        continue;
-      }
-      if (st.bubbleShort === '停滞中！') {
-        const syn = this.rowFallbackSyntheticState(st);
-        const detail = this.matchesResolvedAnchor(st, parent.id, null)
-          ? '停滞を解決しました。'
-          : syn.detailForHover;
-        out.push(
-          this.toStatusBubbleVm(
-            mem.uid,
-            mem.name,
-            mem.photoURL ?? null,
-            { ...syn, detailForHover: detail },
-            keyA
-          )
-        );
-      }
+      const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
+      out.push(
+        ...this.resolveMemberRowBubbles(parent, mem, rid, keyA, parentTask.status, null, st, false)
+      );
     }
     return out;
   }
@@ -1208,8 +1319,8 @@ export class ProgressReportingService {
       memberId: mem.uid,
       memberName: mem.name,
       memberPhotoUrl: mem.photoURL ?? null,
-      short: '進行中～',
-      detail: '',
+      short: '進行中',
+      detail: '進行中のタスクです。次の進捗確認または停滞報告で更新されます。',
       isStagnating: false,
       expandDetailOnHover: false,
       bubbleKey: `${mem.uid}::prog::${rid}${keySuffix}`,
@@ -1222,15 +1333,15 @@ export class ProgressReportingService {
     parent: { id: string; leadAssigneeId: string | null; memberIds: string[] },
     viewerMemberId: string | null,
     rid: string,
-    keySuffix: string
+    keySuffix: string,
+    taskStatus: TaskStatus
   ): ProgressBubbleVm[] {
     const out: ProgressBubbleVm[] = [];
     for (const mem of this.app.getMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
-      out.push(
-        this.emptyContentBubbleVm(mem.uid, mem.name, mem.photoURL ?? null, `${mem.uid}::empty::${rid}${keySuffix}`)
-      );
+      const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
+      out.push(...this.resolveMemberRowBubbles(parent, mem, rid, keySuffix, taskStatus, null, st, false));
     }
     return out;
   }
@@ -1319,6 +1430,9 @@ export class ProgressReportingService {
       st.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
     }
     this.clearThinkingFields(st);
+    if (!st.fanoutCoveredKeys?.length) {
+      this.assignFanoutCoveredKeys(projectId, memberId, st);
+    }
 
     if (!wasStagnating && this.adminAlertProjectId === projectId && typeof window !== 'undefined') {
       const parent = this.app.parentTasks.find((p) => p.id === parentTaskId);
@@ -1340,6 +1454,7 @@ export class ProgressReportingService {
     this.rounds.set(round.id, round);
     this.activeRoundIdByProject.set(projectId, round.id);
     for (const m of this.app.getMembersByProjectId(projectId)) {
+      if (!this.app.shouldReceiveProgressCheck(projectId, m.uid)) continue;
       this.memberStates.set(this.key(projectId, round.id, m.uid), emptyMemberState(round.id));
     }
   }

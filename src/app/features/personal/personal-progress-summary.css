@@ -1,0 +1,145 @@
+:host {
+    display: block;
+    min-height: 100vh;
+    background: var(--red-bg);
+    font-family: 'Segoe UI', 'Meiryo', sans-serif;
+}
+
+/* 完了タスク・MYタスク一覧などと同じ読み幅 */
+.pss-page .main-area {
+    max-width: 960px;
+    width: 100%;
+    margin-inline: auto;
+}
+
+.pss-header-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.pss-header-bar__title {
+    margin: 0 0 4px;
+    font-size: 1.25rem;
+}
+
+.pss-header-bar__sub {
+    margin: 0;
+    color: #555;
+    font-size: 0.88rem;
+}
+
+.pss-header-bar__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pss-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pss-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
+}
+
+@media (max-width: 720px) {
+    .pss-stats {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pss-card {
+    padding: 14px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.pss-recent {
+    width: 100%;
+    overflow: hidden;
+}
+
+.pss-card h2 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+}
+
+.pss-kpi {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 800;
+}
+
+.pss-unit {
+    font-size: 1rem;
+    margin-left: 2px;
+}
+
+.pss-note {
+    margin: 8px 0 0;
+    font-size: 0.78rem;
+    color: #666;
+}
+
+.pss-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.9rem;
+}
+
+.pss-done {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pss-done li {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    font-size: 0.88rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 6px;
+}
+
+.pss-done-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pss-done-at {
+    flex-shrink: 0;
+    color: #666;
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+
+.pss-empty {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+}

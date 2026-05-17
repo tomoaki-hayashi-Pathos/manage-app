@@ -5,6 +5,10 @@
     gap: 0.35rem 0.5rem;
 }
 
+.member-progress-bubbles--single {
+    flex-wrap: nowrap;
+}
+
 .member-progress-bubbles--inline {
     flex: 0 1 auto;
     min-width: 0;
@@ -32,6 +36,59 @@
     align-items: center;
     gap: 0.12rem;
     max-width: 100%;
+    position: relative;
+}
+
+.member-progress-dock--slide-name {
+    gap: 0;
+}
+
+.member-progress-dock__avatar-row {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    max-width: 100%;
+}
+
+.member-progress-dock--slide-name .member-progress-dock__avatar-row {
+    border-radius: 999px;
+    background: #fff;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    padding: 2px;
+}
+
+.member-progress-dock--slide-name .member-progress-dock__avatar {
+    border: 1px solid #ddd;
+    box-shadow: none;
+}
+
+.member-progress-dock--slide-name:hover {
+    z-index: 40;
+}
+
+.member-progress-dock__sliding-name {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #111;
+    -webkit-text-fill-color: #111;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition:
+        max-width 0.35s ease,
+        opacity 0.25s ease,
+        margin 0.25s ease;
+}
+
+.member-progress-dock--slide-name:hover .member-progress-dock__sliding-name {
+    max-width: 140px;
+    opacity: 1;
+    margin-left: 0.25rem;
+    padding-right: 0.2rem;
 }
 
 .member-progress-dock__avatar {
@@ -59,6 +116,14 @@
 }
 
 /* CSS のみの吹き出し（角丸＋左下しっぽ） */
+.member-progress-dock--slide-name .speech-bubble--css {
+    margin-bottom: -0.12rem;
+}
+
+.member-progress-dock--slide-name .speech-bubble--css .speech-bubble__body {
+    margin-bottom: 0.22rem;
+}
+
 .speech-bubble--css {
     position: relative;
     display: flex;

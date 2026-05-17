@@ -1,0 +1,40 @@
+﻿@if (slots.length) {
+    <div class="parent-team-progress-wrap">
+        <span class="avatar-stack-label">担当・メンバー</span>
+        <div class="parent-team-progress-row">
+            @for (slot of leadSlots; track slot.bubble.bubbleKey) {
+                <div class="parent-team-progress-col parent-team-progress-col--lead">
+                    <app-member-progress-bubbles
+                        layout="single"
+                        [slidingName]="true"
+                        [showSpeechBubble]="!hideProgressSpeech"
+                        [bubbles]="[slot.bubble]"
+                    />
+                    <span class="avatar-role-label">{{ slot.role }}</span>
+                </div>
+            }
+            @if (memberSlots.length) {
+                <div
+                    class="parent-team-members-group"
+                    [class.parent-team-members-group--stack]="memberSlots.length > 1"
+                >
+                    @for (slot of memberSlots; track slot.bubble.bubbleKey; let first = $first) {
+                        <div class="parent-team-progress-col parent-team-progress-col--member">
+                            <app-member-progress-bubbles
+                                layout="single"
+                                [slidingName]="true"
+                                [showSpeechBubble]="!hideProgressSpeech"
+                                [bubbles]="[slot.bubble]"
+                            />
+                            @if (first) {
+                                <span class="avatar-role-label">{{ slot.role }}</span>
+                            } @else {
+                                <span class="avatar-role-label avatar-role-label--spacer" aria-hidden="true">{{ slot.role }}</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}

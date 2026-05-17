@@ -2,43 +2,32 @@
     <div class="cm-card">
         <h1 class="cm-title">新規ログインメンバー承認</h1>
         <p class="cm-lead">
-            新規ログインしたメンバーを選択して承認します。プロフィール情報（名前・メール・写真）はログイン元の情報を採用します。
+            新規ログインしたメンバーを選択して承認します。プロフィール情報（名前・メール・写真）はログイン元の情報を採用します。承認後はメンバーとして登録されます。
         </p>
 
         @if (appService.pendingLoginMembers.length === 0) {
             <p class="cm-hint">承認待ちメンバーはいません。</p>
         } @else {
             <div class="cm-field">
-                <label class="cm-label" for="pendingMembers">承認対象（複数選択）</label>
-                <select id="pendingMembers" class="cm-select" multiple size="8">
+                <div class="cm-label" id="pendingMembersHeading">承認対象（複数選択）</div>
+                <div class="cm-pending-list" role="group" aria-labelledby="pendingMembersHeading">
                     @for (p of appService.pendingLoginMembers; track p.email) {
-                        <option
-                            [selected]="isChecked(p.email)"
-                            (click)="onPendingChange(p.email, !isChecked(p.email))"
-                        >
-                            {{ p.name }} ({{ p.email }})
-                        </option>
+                        <label class="member-check">
+                            <input
+                                type="checkbox"
+                                [checked]="isChecked(p.email)"
+                                (change)="onPendingChange(p.email, $any($event.target).checked)"
+                            />
+                            <span>{{ p.name }} ({{ p.email }})</span>
+                        </label>
                     }
-                </select>
+                </div>
             </div>
         }
 
-        <div class="cm-field">
-            <label class="cm-label" for="memberRole">承認後ロール</label>
-            <select id="memberRole" class="cm-select" name="role" [(ngModel)]="role">
-                @for (r of roleOptions; track r) {
-                    <option [ngValue]="r">{{ r }}</option>
-                }
-            </select>
-        </div>
-
         <div class="cm-actions">
             <button type="button" class="btn btn--primary" (click)="approveSelected()">選択メンバーを承認</button>
-            <button type="button" class="btn btn--secondary" (click)="goTop()">トップへ戻る</button>
-            <a routerLink="/admin/create-project" class="btn btn--ghost">プロジェクト作成・編集へ</a>
-            @if (projectId) {
-                <a [routerLink]="['/admin/manage-tasks', projectId]" class="btn btn--ghost">管理画面へ戻る</a>
-            }
+            <button type="button" class="btn btn--secondary" (click)="goOwnerMenu()">オーナー画面に戻る</button>
         </div>
     </div>
 </div>

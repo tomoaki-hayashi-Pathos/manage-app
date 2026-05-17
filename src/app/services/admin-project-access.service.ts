@@ -13,9 +13,9 @@ export class AdminProjectAccessService {
     if (!this.app.ready() || this.auth.loading()) return false;
     this.app.notificationTick();
     const admin = this.app.getMemberByEmail(this.auth.currentEmail());
-    const allowed = admin?.role === '管理者' && this.app.isAdminProjectOwner(projectId, admin.uid);
+    const allowed = !!admin && this.app.getProjectAdminId(projectId) === admin.uid;
     if (allowed) return false;
-    void this.router.navigate(['/admin/menu']);
+    void this.router.navigate(['/member/hub']);
     return true;
   }
 }

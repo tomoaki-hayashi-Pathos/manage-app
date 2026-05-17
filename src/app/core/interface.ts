@@ -10,7 +10,10 @@ export interface Project {
 
     adminId: string,
 
-    memberIds: string[]
+    memberIds: string[],
+
+    /** 個人専用（責任者のみ参加） */
+    isPersonal?: boolean
 
 }
 

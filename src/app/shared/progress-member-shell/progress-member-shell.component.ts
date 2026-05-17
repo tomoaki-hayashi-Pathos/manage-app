@@ -34,6 +34,8 @@ export class ProgressMemberShellComponent implements OnInit, OnDestroy {
   @Input({ required: true }) memberId!: string;
   @Input({ required: true }) parentTasks!: ParentTask[];
   @Input() showOlDock = true;
+  /** チームメンバー画面以外では停滞報告・進捗確認モーダルを出さない */
+  @Input() suppressProgressStagnationUi = false;
 
   stagnationChildId = '';
   stagnationReason = '';
@@ -206,7 +208,7 @@ export class ProgressMemberShellComponent implements OnInit, OnDestroy {
     this.resetConsultDraft();
   }
 
-  /** もう終わる: 自分担当の進行中の親・子の一覧 */
+  /** もう終わる: 自分担当の進行中の親・子の一覧（子ありは子のみ。全子未着手は親のみ） */
   get donePickRows(): { key: string; label: string }[] {
     const rows: { key: string; label: string }[] = [];
     const parents = this.appService.getSortedParentTasksForProject(this.projectId, false);
@@ -215,11 +217,21 @@ export class ProgressMemberShellComponent implements OnInit, OnDestroy {
       const onTeam =
         p.leadAssigneeId === this.memberId || p.memberIds.includes(this.memberId);
       if (!onTeam) continue;
-      rows.push({
-        key: `parent::${p.id}`,
-        label: `${p.title || '（無題）'}（親）`
-      });
-      for (const c of this.appService.getChildTasksByParentId(p.id)) {
+
+      const children = this.appService.getChildTasksByParentId(p.id);
+      const parentOnlyPick =
+        children.length === 0 ||
+        (children.length > 0 && children.every((c) => c.status === '未着手'));
+
+      if (parentOnlyPick) {
+        rows.push({
+          key: `parent::${p.id}`,
+          label: `${p.title || '（無題）'}（親）`
+        });
+        continue;
+      }
+
+      for (const c of children) {
         if (c.status !== '進行中' || c.assigneeId !== this.memberId) continue;
         rows.push({
           key: `child::${p.id}::${c.id}`,

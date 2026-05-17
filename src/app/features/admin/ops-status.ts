@@ -1,9 +1,10 @@
 import { Component, HostListener, effect, inject, OnDestroy, OnInit } from '@angular/core';
 import { AppService } from '../../app.service';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MemberBurdenSummary, AdminNavPageKey } from '../../core/interface';
 import { AdminProjectAccessService } from '../../services/admin-project-access.service';
+import { showAdminDrawerLink, type AdminDrawerNavTarget } from './admin-drawer-nav.util';
 
 @Component({
     selector: 'app-ops-status',
@@ -15,6 +16,7 @@ import { AdminProjectAccessService } from '../../services/admin-project-access.s
 export class OpsStatusComponent implements OnInit, OnDestroy {
     readonly appService = inject(AppService);
     readonly route = inject(ActivatedRoute);
+    private readonly router = inject(Router);
     private readonly adminAccess = inject(AdminProjectAccessService);
     readonly projectId = this.route.snapshot.params['projectId'] as string;
     private readonly accessEffect = effect(() => {
@@ -69,6 +71,10 @@ export class OpsStatusComponent implements OnInit, OnDestroy {
     toggleRightMenu(ev: MouseEvent): void {
         ev.stopPropagation();
         this.rightMenuOpen = !this.rightMenuOpen;
+    }
+
+    showAdminDrawerNav(target: AdminDrawerNavTarget): boolean {
+        return showAdminDrawerLink(this.router, this.projectId, target);
     }
 
     closeRightMenu(): void {

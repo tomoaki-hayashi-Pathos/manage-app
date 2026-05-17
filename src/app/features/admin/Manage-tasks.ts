@@ -1,26 +1,43 @@
 // 親タスク管理ページ
 
-import { Component, HostListener, effect, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, ViewChild, effect, inject, OnDestroy, OnInit } from '@angular/core';
 
 import { AppService } from '../../app.service';
 
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { FormsModule } from '@angular/forms';
 
 import { CommonModule } from '@angular/common';
-
-import { RouterLink } from '@angular/router';
 
 import { ParentTask, Member, TaskStatus, ChildTask, MENTION_ALL, MENTION_ADMIN, AdminNavPageKey } from '../../core/interface';
 
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ProgressReportingService } from '../../services/progress-reporting.service';
 import { AiChatService } from '../../services/ai-chat.service';
-import { StorageService, storageKeyConsultationBundle } from '../../services/storage.service';
+import {
+    StorageService,
+    storageKeyAdminTaskChangeBundle,
+    storageKeyConsultationBundle
+} from '../../services/storage.service';
 import type { ConsultationProjectBundle } from '../../core/progress-chat.types';
+import {
+    dismissAdminTaskChangeBundle,
+    getPendingAdminTaskChangeText
+} from '../../core/member-task-change-notify.util';
 import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
+import { ProgressMemberShellComponent } from '../../shared/progress-member-shell/progress-member-shell.component';
+import { ParentTeamProgressStripComponent } from '../../shared/parent-team-progress-strip/parent-team-progress-strip.component';
 import { AdminProjectAccessService } from '../../services/admin-project-access.service';
+import { AuthSessionService } from '../../services/auth-session.service';
+import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import {
+    defaultToolbarFilterState,
+    isToolbarFilterDefault,
+    parentMatchesToolbarFilters,
+    type TaskToolbarFilterState,
+} from '../../shared/task-search-filter-toolbar/task-search-filter.util';
+import { showAdminDrawerLink, type AdminDrawerNavTarget } from './admin-drawer-nav.util';
 
 type ParentEditDraft = {
     title: string;
@@ -40,11 +57,29 @@ type ChildEditDraft = {
 @Component({
     selector: 'app-manage-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, RouterLink, DragDropModule, MemberProgressBubblesComponent],
+    imports: [
+        FormsModule,
+        CommonModule,
+        RouterLink,
+        DragDropModule,
+        MemberProgressBubblesComponent,
+        ProgressMemberShellComponent,
+        ParentTeamProgressStripComponent,
+        TaskSearchFilterToolbarComponent
+    ],
     templateUrl: './Manage-tasks.html',
     styleUrls: ['./Manage-tasks.css', '../../progress-ai.css']
 })
 export class ManageTasksComponent implements OnInit, OnDestroy {
+    /** タイトル入力完了時（blur / Enter） */
+    private static readonly SIDEBAR_SCROLL_STEP_PX = 72;
+    /** 設定未完成タスク追加後（一覧1件分が見える程度） */
+    private static readonly SIDEBAR_SCROLL_AFTER_DRAFT_PX = 112;
+
+    @ViewChild('sidebarScroll') sidebarScrollRef?: ElementRef<HTMLElement>;
+
+    /** Enter 後の blur で二重スクロールしない */
+    private skipTitleBlurScroll = false;
 
     public appService = inject(AppService);
     public route = inject(ActivatedRoute);
@@ -52,19 +87,25 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     readonly aiChat = inject(AiChatService);
     private readonly storage = inject(StorageService);
     private readonly adminAccess = inject(AdminProjectAccessService);
+    private readonly auth = inject(AuthSessionService);
+    private readonly router = inject(Router);
 
     readonly projectId = this.route.snapshot.params['projectId'] as string;
     private readonly accessEffect = effect(() => {
         this.adminAccess.redirectIfForbidden(this.projectId);
     });
 
-    projectName = this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    get projectName(): string {
+        return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
+    }
     readonly characterVideoSrc = 'assets/character-typing.mp4';
     characterBubbleVisible = false;
     characterBubbleText = '';
-    /** 要相談サマリ表示中は確認ボタンを出す */
+    /** 要相談・メンバー変更通知表示中は確認ボタンを出す */
     consultationConfirm = false;
     private consultUnsub: (() => void) | null = null;
+    private taskChangeUnsub: (() => void) | null = null;
+    private adminBubbleRefreshSeq = 0;
     private characterShowTimerId: number | null = null;
     private characterHideTimerId: number | null = null;
 
@@ -80,11 +121,11 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     readonly TOK_ALL = MENTION_ALL;
     readonly TOK_ADMIN = MENTION_ADMIN;
 
-    /** 'all' = すべて表示、それ以外 = 親タスク id */
-    parentTaskFilterId: string | 'all' = 'all';
+    toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
 
     viewMode: number = 0;
-    incompleteSectionOpen = false;
+    /** 左フォーム「担当｜メンバー」2人以上のとき折りたたみ用 */
+    createMemberAssignSectionOpen = true;
 
     childInputs: Record<string, { title: string; assigneeId: string; scheduledDateStr: string }> = {};
 
@@ -104,11 +145,19 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     ngOnInit(): void {
         this.appService.setAdminCurrentNavPage(this.projectId, null);
         this.progress.setAdminPageActive(this.projectId, true);
-        this.consultUnsub = this.storage.watchKey(storageKeyConsultationBundle(this.projectId), () => {
-            void this.refreshConsultationBubbleFromStorage();
-        });
-        void this.refreshConsultationBubbleFromStorage();
+        this.progress.ensureProgressRoundForProject(this.projectId);
+        const refreshBubble = () => void this.refreshAdminBubbleFromStorage();
+        this.consultUnsub = this.storage.watchKey(storageKeyConsultationBundle(this.projectId), refreshBubble);
+        this.taskChangeUnsub = this.storage.watchKey(storageKeyAdminTaskChangeBundle(this.projectId), refreshBubble);
+        void this.refreshAdminBubbleFromStorage();
         this.startCharacterBubbleLoop();
+        if (this.users.length >= 2) {
+            this.createMemberAssignSectionOpen = false;
+        }
+    }
+
+    toggleCreateMemberAssignSection(): void {
+        this.createMemberAssignSectionOpen = !this.createMemberAssignSectionOpen;
     }
 
     ngOnDestroy(): void {
@@ -116,6 +165,8 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         this.progress.setAdminPageActive(this.projectId, false);
         this.consultUnsub?.();
         this.consultUnsub = null;
+        this.taskChangeUnsub?.();
+        this.taskChangeUnsub = null;
         this.clearCharacterBubbleTimers();
         if (this.aiChat.chatOpen() && this.aiChat.projectIdOpen() === this.projectId) {
             this.aiChat.closeChat();
@@ -127,8 +178,9 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     chatPublicOn = true;
 
     openAdminOlChat(): void {
+        const meUid = this.appService.getMemberByEmail(this.auth.currentEmail())?.uid?.trim();
         const mid =
-            this.memberId?.trim() ||
+            meUid ||
             this.appService.getMembersByProjectId(this.projectId)[0]?.uid;
         if (!mid) {
             window.alert('プロジェクトにメンバーがいません');
@@ -156,19 +208,34 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     requestProgressCheck(): void {
+        const targets = this.appService
+            .getMembersByProjectId(this.projectId)
+            .filter((m) => this.appService.shouldReceiveProgressCheck(this.projectId, m.uid));
         const deferred = new Set(
-            this.appService.getMembersByProjectId(this.projectId).map((m) => m.uid).filter((uid) => this.aiChat.isChatActiveFor(this.projectId, uid))
+            targets.map((m) => m.uid).filter((uid) => this.aiChat.isChatActiveFor(this.projectId, uid))
         );
         this.progress.requestProgressReport(this.projectId, deferred);
-        alert('メンバー全員に進捗の報告（もう終わる / 問題なし / 要相談）を促しました。');
+        if (!targets.length) {
+            alert('進捗確認の対象となるメンバーがいません（責任者は進行中の関与タスクがある場合のみ対象です）。');
+            return;
+        }
+        alert(`${targets.length}名に進捗の報告（もう終わる / 問題なし / 要相談）を促しました。`);
     }
 
     progressBubblesForChild(task: ParentTask, child: ChildTask) {
         return this.progress.bubblesForChildRow(this.projectId, task, child.id, null, child.assigneeId ?? null);
     }
 
+    progressAssigneeBubbleForChild(_task: ParentTask, child: ChildTask) {
+        return this.progress.bubblesForChildAssigneeDisplay(this.projectId, child);
+    }
+
     progressBubblesParentOnly(task: ParentTask) {
         return this.progress.bubblesForParentOnly(this.projectId, task, null);
+    }
+
+    get headerSelfBubbles() {
+        return this.progress.bubblesForMemberHeaderDisplay(this.projectId, this.adminSelfMemberUid);
     }
 
     /** 右上オーバーメニュー */
@@ -187,25 +254,66 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     sidebarIncompleteDraft: ParentEditDraft | null = null;
 
     get users(): Member[] {
-        return this.appService.getMembersByProjectId(this.projectId).filter((m) => m.role !== '管理者');
+        const list = [...this.appService.getMembersByProjectId(this.projectId)];
+        const p = this.appService.projects.find((x) => x.id === this.projectId);
+        if (p?.adminId) {
+            const adminMem = this.appService.getMemberById(p.adminId);
+            if (adminMem && !list.some((m) => m.uid === adminMem.uid)) {
+                list.push(adminMem);
+            }
+        }
+        return list;
     }
 
-    /** 絞り込み用（下書き含む） */
-    get parentTasksForFilter(): ParentTask[] {
-        return [...this.appService.getAllParentTasksForProject(this.projectId)]
-            .filter((t) => !t.isDraft)
-            .filter((t) => !this.appService.shouldExcludePrivateMyFromAdmin(t))
-            .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
+    /** 管理者用メンバー画面ルート用 */
+    get adminSelfMemberUid(): string {
+        return this.appService.getMemberByEmail(this.auth.currentEmail())?.uid ?? '';
+    }
+
+    /** 責任者が進行中タスクに関与しているときだけ進捗・停滞シェルを表示 */
+    get adminShowsProgressMemberShell(): boolean {
+        void this.appService.notificationTick();
+        const uid = this.adminSelfMemberUid;
+        return !!uid && this.appService.memberHasInProgressTaskInvolvement(this.projectId, uid);
+    }
+
+    /** 進捗シェル（要相談・もう終わる選択）用 */
+    get progressShellParents(): ParentTask[] {
+        const uid = this.adminSelfMemberUid;
+        if (!uid) return [];
+        return this.baseVisibleParentTasks.filter(
+            (t) => t.leadAssigneeId === uid || t.memberIds.includes(uid)
+        );
+    }
+
+    get baseVisibleParentTasks(): ParentTask[] {
+        return this.appService
+            .getSortedParentTasksForProject(this.projectId, false)
+            .filter((t) => !this.appService.shouldExcludePrivateMyFromAdmin(t));
+    }
+
+    get toolbarCandidateParents(): ParentTask[] {
+        return this.baseVisibleParentTasks;
+    }
+
+    hideToolbarAssigneeFilter(): boolean {
+        return false;
+    }
+
+    parentListDragEnabled(): boolean {
+        return isToolbarFilterDefault(this.toolbarFilter);
+    }
+
+    onParentSortPick(kind: 'deadline' | 'status'): void {
+        if (kind === 'deadline') {
+            this.appService.resetParentListSortToDeadline(this.projectId);
+        } else {
+            this.appService.resetParentListSortToStatus(this.projectId);
+        }
     }
 
     get visibleParentTasks(): ParentTask[] {
-        let tasks = this.appService
-            .getSortedParentTasksForProject(this.projectId, false)
-            .filter((t) => !this.appService.shouldExcludePrivateMyFromAdmin(t));
-        if (this.parentTaskFilterId !== 'all') {
-            tasks = tasks.filter((t) => t.id === this.parentTaskFilterId);
-        }
-        return tasks;
+        return this.baseVisibleParentTasks.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
     }
 
     get viewModeLabel(): string {
@@ -272,11 +380,42 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         return this.childInputs[parentId];
     }
 
+    onCreateTitleBlur(): void {
+        if (this.skipTitleBlurScroll) {
+            this.skipTitleBlurScroll = false;
+            return;
+        }
+        this.scrollSidebarAfterTitleComplete();
+    }
+
+    onCreateTitleEnter(ev: Event): void {
+        const e = ev as KeyboardEvent;
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        this.skipTitleBlurScroll = true;
+        (e.target as HTMLInputElement | null)?.blur();
+        this.scrollSidebarAfterTitleComplete();
+    }
+
+    private scrollSidebarAfterTitleComplete(): void {
+        if (!this.title.trim()) return;
+        this.scrollSidebarByWheelStep();
+    }
+
+    private scrollSidebarByWheelStep(px: number = ManageTasksComponent.SIDEBAR_SCROLL_STEP_PX): void {
+        const el = this.sidebarScrollRef?.nativeElement;
+        if (!el) return;
+        el.scrollBy({ top: px, behavior: 'smooth' });
+    }
+
     createParentTask(): void {
+        const titleTrim = this.title.trim();
         const deadline = this.deadlineInput ? new Date(this.deadlineInput) : null;
         const lead = this.selectionOrder[0] ?? null;
         const members = this.selectionOrder.slice(1);
+        const addedAsDraft = !!titleTrim && (!deadline || !lead);
         this.appService.CreateParentTask(this.projectId, this.title, deadline, this.isUrgent, lead, members, this.description, false, null, this.mentionUserIds);
+        if (!titleTrim) return;
         this.title = '';
         this.deadlineInput = '';
         this.isUrgent = false;
@@ -284,6 +423,9 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         this.selectionOrder = [];
         this.mentionUserIds = [];
         this.mentionPopoverOpen = false;
+        if (addedAsDraft) {
+            setTimeout(() => this.scrollSidebarByWheelStep(ManageTasksComponent.SIDEBAR_SCROLL_AFTER_DRAFT_PX), 0);
+        }
     }
 
     toggleCreateMention(id: string, checked: boolean): void {
@@ -446,17 +588,18 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
 
     onParentDrop(ev: CdkDragDrop<void>): void {
-
-        const list = [...this.visibleParentTasks];
-
+        const base = [...this.baseVisibleParentTasks];
+        const visible = this.visibleParentTasks;
         if (ev.previousIndex === ev.currentIndex) return;
-
-        moveItemInArray(list, ev.previousIndex, ev.currentIndex);
-
-        this.appService.applyParentTaskReorder(this.projectId, list);
-
+        const dragged = visible[ev.previousIndex];
+        if (!dragged) return;
+        const fromIdx = base.findIndex((p) => p.id === dragged.id);
+        const target = visible[ev.currentIndex];
+        const toIdx = target ? base.findIndex((p) => p.id === target.id) : base.length - 1;
+        if (fromIdx < 0 || toIdx < 0) return;
+        moveItemInArray(base, fromIdx, toIdx);
+        this.appService.applyParentTaskReorder(this.projectId, base);
         this.appService.notifyTaskListReordered(this.projectId);
-
     }
 
     toDatetimeLocal(deadline: Date | string | null): string {
@@ -505,7 +648,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
             priority: d.isUrgent ? '高' : '通常',
             mentionUserIds: [...d.mentionUserIds],
             selectionOrder: [...d.selectionOrder]
-        }, undefined);
+        }, this.appService.getProjectAdminId(this.projectId));
 
         this.cancelParentEdit();
 
@@ -532,7 +675,9 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         if (this.parentEditTaskId === taskId) this.cancelParentEdit();
         if (this.sidebarIncompleteEditId === taskId) this.cancelSidebarIncompleteEdit();
         this.appService.deleteParentTask(taskId);
-        if (this.parentTaskFilterId === taskId) this.parentTaskFilterId = 'all';
+        if (this.toolbarFilter.pickParentId === taskId) {
+            this.toolbarFilter = { ...this.toolbarFilter, pickParentId: null };
+        }
     }
 
     enterChildEdit(c: ChildTask, ev?: Event): void {
@@ -615,10 +760,14 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
             selectionOrder: [...d.selectionOrder]
 
-        });
+        }, this.appService.getProjectAdminId(this.projectId));
 
         this.cancelSidebarIncompleteEdit();
 
+    }
+
+    showAdminDrawerNav(target: AdminDrawerNavTarget): boolean {
+        return showAdminDrawerLink(this.router, this.projectId, target);
     }
 
     toggleRightMenu(ev: MouseEvent): void {
@@ -645,10 +794,6 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         return !!draft?.selectionOrder.includes(uid);
     }
 
-    //テスト時のみ使用（leadMemberにも記載あり）
-
-    memberId: string = this.appService.members.find((m)=>m.email === 'tomoaki8843@gmail.com')!.uid;
-    
     private startCharacterBubbleLoop(): void {
         if (typeof window === 'undefined') return;
         this.scheduleCharacterBubble();
@@ -681,36 +826,61 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         }
     }
 
-    private async refreshConsultationBubbleFromStorage(): Promise<void> {
-        const bundle = this.storage.getJson<ConsultationProjectBundle | null>(storageKeyConsultationBundle(this.projectId));
-        if (!bundle || !Array.isArray(bundle.entries)) {
-            this.consultationConfirm = false;
+    private getConsultPendingEntries(): ConsultationProjectBundle['entries'] {
+        const consultBundle = this.storage.getJson<ConsultationProjectBundle | null>(
+            storageKeyConsultationBundle(this.projectId)
+        );
+        if (!consultBundle || !Array.isArray(consultBundle.entries)) return [];
+        const dismissed = consultBundle.adminDismissedAt ?? 0;
+        return consultBundle.entries.filter((e) => e.at > dismissed);
+    }
+
+    private hideAdminPendingBubble(): void {
+        this.consultationConfirm = false;
+        this.characterBubbleVisible = false;
+        this.characterBubbleText = '';
+    }
+
+    private async refreshAdminBubbleFromStorage(): Promise<void> {
+        const seq = ++this.adminBubbleRefreshSeq;
+
+        const consultPending = this.getConsultPendingEntries();
+        let consultSummary: string | null = null;
+        if (consultPending.length) {
+            consultSummary = await this.aiChat.summarizeConsultationEntries(consultPending, this.projectId);
+        }
+
+        if (seq !== this.adminBubbleRefreshSeq) return;
+
+        const parts: string[] = [];
+        const taskChangeText = getPendingAdminTaskChangeText(this.storage, this.projectId);
+        if (taskChangeText) parts.push(taskChangeText);
+
+        if (this.getConsultPendingEntries().length > 0 && consultSummary) {
+            parts.push(consultSummary);
+        }
+
+        if (!parts.length) {
+            this.hideAdminPendingBubble();
+            this.scheduleCharacterBubble();
             return;
         }
-        const dismissed = bundle.adminDismissedAt ?? 0;
-        const pending = bundle.entries.filter((e) => e.at > dismissed);
-        if (pending.length === 0) {
-            this.consultationConfirm = false;
-            return;
-        }
-        const text = await this.aiChat.summarizeConsultationEntries(pending, this.projectId);
+
         this.clearCharacterBubbleTimers();
-        this.characterBubbleText = text;
+        this.characterBubbleText = parts.join('\n\n');
         this.characterBubbleVisible = true;
         this.consultationConfirm = true;
     }
 
     confirmConsultationRead(): void {
-        const key = storageKeyConsultationBundle(this.projectId);
-        const bundle = this.storage.getJson<ConsultationProjectBundle | null>(key);
-        if (!bundle || !Array.isArray(bundle.entries)) {
-            this.consultationConfirm = false;
-            this.characterBubbleVisible = false;
-            this.scheduleCharacterBubble();
-            return;
+        this.adminBubbleRefreshSeq++;
+        const consultKey = storageKeyConsultationBundle(this.projectId);
+        const consultBundle = this.storage.getJson<ConsultationProjectBundle | null>(consultKey);
+        if (consultBundle && Array.isArray(consultBundle.entries)) {
+            consultBundle.adminDismissedAt = Date.now();
+            this.storage.setJson(consultKey, consultBundle);
         }
-        bundle.adminDismissedAt = Date.now();
-        this.storage.setJson(key, bundle);
+        dismissAdminTaskChangeBundle(this.storage, this.projectId);
         this.consultationConfirm = false;
         this.characterBubbleVisible = false;
         this.scheduleCharacterBubble();

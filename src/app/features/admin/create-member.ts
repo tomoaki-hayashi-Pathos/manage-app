@@ -1,25 +1,40 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, ActivatedRoute } from '@angular/router';
+import { Router } from '@angular/router';
 import { AppService } from '../../app.service';
-import { Member } from '../../core/interface';
+import { AuthSessionService } from '../../services/auth-session.service';
 
 @Component({
     selector: 'app-create-member',
     standalone: true,
-    imports: [FormsModule, RouterLink],
+    imports: [FormsModule],
     templateUrl: './create-member.html',
     styleUrls: ['./create-member.css']
 })
-export class CreateMemberComponent {
+export class CreateMemberComponent implements OnInit {
     readonly appService = inject(AppService);
     private readonly router = inject(Router);
-    private readonly route = inject(ActivatedRoute);
+    private readonly auth = inject(AuthSessionService);
 
-    role: Member['role'] = 'メンバー';
-    readonly roleOptions: Member['role'][] = ['管理者', 'メンバー'];
+    readonly role = 'メンバー' as const;
     selectedPendingEmails: string[] = [];
-    projectId = this.route.snapshot.paramMap.get('projectId') as string;
+
+    ngOnInit(): void {
+        const id = window.setInterval(() => {
+            if (!this.appService.ready() || this.auth.loading()) return;
+            const user = this.auth.user();
+            const email = this.auth.currentEmail();
+            if (!user || !email) return;
+
+            window.clearInterval(id);
+            const me = this.appService.getMemberByEmail(email);
+            if (!me) {
+                void this.router.navigate(['/pending-approval']);
+                return;
+            }
+            if (!this.appService.isAppOwner(me.uid)) void this.router.navigate(['/member/hub']);
+        }, 50);
+    }
 
     isChecked(email: string): boolean {
         return this.selectedPendingEmails.includes(email);
@@ -43,7 +58,7 @@ export class CreateMemberComponent {
         alert('承認が完了しました');
     }
 
-    goTop(): void {
-        void this.router.navigate(['/top']);
+    goOwnerMenu(): void {
+        void this.router.navigate(['/owner/menu']);
     }
 }

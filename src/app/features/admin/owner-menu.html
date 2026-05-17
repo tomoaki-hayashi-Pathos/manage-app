@@ -1,0 +1,109 @@
+<div class="entry">
+  <div class="card">
+    <div class="user">
+      <div>
+        <h1>オーナーページ</h1>
+        @if (me(); as m) {
+          <div class="entry-user-chip">
+            @if (m.photoURL) {
+              <img class="entry-user-chip__img" [src]="m.photoURL" [alt]="m.name" />
+            } @else {
+              <span class="entry-user-chip__fallback">{{ m.name.slice(0, 2) }}</span>
+            }
+            <span class="entry-user-chip__name">{{ m.name }}</span>
+          </div>
+        } @else if (auth.user(); as u) {
+          <div class="entry-user-chip">
+            @if (u.photoURL) {
+              <img class="entry-user-chip__img" [src]="u.photoURL" [alt]="u.displayName || u.email || ''" />
+            } @else {
+              <span class="entry-user-chip__fallback">{{ (u.displayName || u.email || '?').slice(0, 2) }}</span>
+            }
+            <span class="entry-user-chip__name">{{ u.displayName || u.email }}</span>
+          </div>
+        }
+      </div>
+      <button type="button" class="btn btn-ghost" (click)="logout()">ログアウト</button>
+    </div>
+
+    @if (!app.ready() || auth.loading()) {
+      <p>読み込み中…</p>
+    } @else if (!me() || !app.isAppOwner(me()!.uid)) {
+      <p class="pending">この画面はオーナーのみ利用できます。</p>
+    } @else {
+      <div class="owner-actions">
+        <button type="button" class="owner-circle-btn owner-circle-btn--approve" (click)="goApprove()">
+          新規メンバー<br />承認
+        </button>
+        <button type="button" class="owner-circle-btn owner-circle-btn--hub" (click)="goMemberHub()">
+          メンバーページ<br />へ
+        </button>
+      </div>
+
+      <section class="section owner-members-section">
+        <div class="owner-members-panel">
+          <h2 class="am-section-title am-section-title--in-panel">メンバー一覧</h2>
+          <p class="am-hint am-hint--sub">オーナーにする・削除（オーナーは譲渡後に削除可能）</p>
+          <div class="am-member-table-wrap">
+            <div class="am-member-table" role="table">
+              <div class="am-member-head" role="row">
+                <span role="columnheader">名前</span>
+                <span role="columnheader">役割</span>
+                <span role="columnheader">操作</span>
+              </div>
+              @for (m of headMembers(); track m.uid) {
+                <div class="am-member-row" role="row">
+                  <span class="am-member-name" role="cell">{{ m.name }}</span>
+                  <span class="am-member-cell" role="cell">
+                    @if (isRowOwner(m.uid)) {
+                      <span class="am-pill">オーナー</span>
+                    } @else {
+                      <span>メンバー</span>
+                    }
+                  </span>
+                  <span class="am-member-cell" role="cell">
+                    @if (!isRowOwner(m.uid)) {
+                      <button type="button" class="btn btn--compact" (click)="makeOwner(m.uid)">オーナーにする</button>
+                      <button type="button" class="btn btn-danger btn--compact" (click)="removeMember(m.uid, m.name)">削除</button>
+                    }
+                  </span>
+                </div>
+              }
+              @if (tailMembers().length > 0) {
+                <details class="am-member-details am-member-details--compact">
+                  <summary class="am-member-more">
+                    <span class="am-member-more__arrow" aria-hidden="true">↓</span>
+                    <span class="am-member-more__text">他{{ tailMembers().length }}名</span>
+                  </summary>
+                  <div class="am-member-table am-member-table--nested">
+                    @for (m of tailMembers(); track m.uid) {
+                      <div class="am-member-row" role="row">
+                        <span class="am-member-name" role="cell">{{ m.name }}</span>
+                        <span class="am-member-cell" role="cell">
+                          @if (isRowOwner(m.uid)) {
+                            <span class="am-pill">オーナー</span>
+                          } @else {
+                            <span>メンバー</span>
+                          }
+                        </span>
+                        <span class="am-member-cell" role="cell">
+                          @if (!isRowOwner(m.uid)) {
+                            <button type="button" class="btn btn--compact" (click)="makeOwner(m.uid)">オーナーにする</button>
+                            <button type="button" class="btn btn-danger btn--compact" (click)="removeMember(m.uid, m.name)">削除</button>
+                          }
+                        </span>
+                      </div>
+                    }
+                  </div>
+                </details>
+              }
+            </div>
+          </div>
+        </div>
+        <div class="owner-members-footer">
+          <button type="button" class="owner-reset-btn" (click)="resetApp()">アプリのリセット</button>
+        </div>
+      </section>
+    }
+  </div>
+</div>

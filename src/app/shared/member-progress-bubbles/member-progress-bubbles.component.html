@@ -1,34 +1,45 @@
 <div
     class="member-progress-bubbles"
     [class.member-progress-bubbles--inline]="layout === 'inline'"
+    [class.member-progress-bubbles--single]="layout === 'single'"
     [class.member-progress-bubbles--empty]="bubbles.length === 0"
     aria-label="メンバー進捗"
 >
     @for (b of bubbles; track b.bubbleKey) {
-        <div class="member-progress-dock">
-            <div
-                class="speech-bubble speech-bubble--css"
-                [class.speech-bubble--expandable]="b.expandDetailOnHover"
-                [class.speech-bubble--always-detail]="b.alwaysShowDetail"
-                [class.speech-bubble--stagnate]="b.isStagnating"
-            >
-                <div class="speech-bubble__body">
-                    <span class="speech-bubble__short">{{ b.short }}</span>
-                    <span class="speech-bubble__detail">{{ b.detail }}</span>
+        <div
+            class="member-progress-dock"
+            [class.member-progress-dock--slide-name]="slidingName && showAvatar"
+        >
+            @if (showSpeechBubble) {
+                <div
+                    class="speech-bubble speech-bubble--css"
+                    [class.speech-bubble--expandable]="b.expandDetailOnHover"
+                    [class.speech-bubble--always-detail]="b.alwaysShowDetail"
+                    [class.speech-bubble--stagnate]="b.isStagnating"
+                >
+                    <div class="speech-bubble__body">
+                        <span class="speech-bubble__short">{{ b.short }}</span>
+                        <span class="speech-bubble__detail">{{ b.detail }}</span>
+                    </div>
                 </div>
-            </div>
+            }
             @if (showAvatar && b.memberId) {
-                <span class="member-progress-dock__avatar" [title]="b.memberName">
-                    @if (b.memberPhotoUrl) {
-                        <img [src]="b.memberPhotoUrl" [alt]="b.memberName" />
-                    } @else {
-                        <span class="member-progress-dock__fallback">{{ initials(b.memberName) }}</span>
+                <div class="member-progress-dock__avatar-row">
+                    <span class="member-progress-dock__avatar" [title]="b.memberName">
+                        @if (b.memberPhotoUrl) {
+                            <img [src]="b.memberPhotoUrl" [alt]="b.memberName" />
+                        } @else {
+                            <span class="member-progress-dock__fallback">{{ initials(b.memberName) }}</span>
+                        }
+                    </span>
+                    @if (slidingName) {
+                        <span class="member-progress-dock__sliding-name">{{ b.memberName }}</span>
                     }
-                </span>
+                </div>
             }
         </div>
     }
-    @if (bubbles.length === 0) {
+    @if (bubbles.length === 0 && layout !== 'single') {
         <div class="member-progress-dock member-progress-dock--empty-slot">
             <div class="speech-bubble speech-bubble--css speech-bubble--always-detail speech-bubble--empty-slot-bubble">
                 <div class="speech-bubble__body">
