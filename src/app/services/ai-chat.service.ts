@@ -264,7 +264,7 @@ export class AiChatService {
     const round = this.progress.getActiveRound(projectId);
     if (round) {
       lines.push(
-        `【進捗確認ラウンド】管理者が ${new Date(round.createdAt).toLocaleString('ja-JP')} に進捗確認（もう終わる／問題なし／要相談）を送信したラウンドが有効です。`
+        `【進捗確認ラウンド】管理者が ${new Date(round.createdAt).toLocaleString('ja-JP')} に進捗確認（もう終わる／問題なし／ちょっと相談）を送信したラウンドが有効です。`
       );
     } else {
       lines.push('【進捗確認ラウンド】現在アクティブな進捗確認ラウンドはありません。');

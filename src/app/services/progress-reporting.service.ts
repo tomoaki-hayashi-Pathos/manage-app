@@ -48,7 +48,24 @@ const THINKING_NUDGE_MS = 60 * 60 * 1000;
 const FANOUT_STATUS_LABELS = new Set(['問題なし', 'もう終わる', '考え中', '質問中', '要回答']);
 
 const PROGRESS_CHECK_INTRO =
-  '管理者が進捗確認を送信しました。「もう終わる」「問題なし」「要相談」から選んでください。';
+  '管理者が進捗確認を送信しました。「もう終わる」「問題なし」「ちょっと相談」から選んでください。';
+
+const RESOLVED_STAGNATION_BUBBLE_DETAIL = '停滞を解決しました。';
+
+/** 吹き出し下段: 考え中・行フォールバック／進捗確認の「問題なし」は非表示。停滞解決のみ残す */
+function statusBubbleVisibleDetail(short: string, detail: string): string {
+  const s = (short || '').trim();
+  const d = (detail || '').trim();
+  if (s === '考え中') return '';
+  if (s === '問題なし') {
+    return d === RESOLVED_STAGNATION_BUBBLE_DETAIL ? d : '';
+  }
+  return detail;
+}
+
+function statusBubbleAlwaysShowDetail(detail: string): boolean {
+  return !!detail.trim();
+}
 
 function emptyMemberState(roundId: string): MemberProgressRoundState {
   return {
@@ -404,16 +421,16 @@ export class ProgressReportingService {
       st.bubbleShort = '停滞中！';
       if (!st.rowFallbackShort?.trim()) {
         st.rowFallbackShort = '問題なし';
-        st.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
+        st.rowFallbackDetail = '';
       }
       return;
     }
     st.stagnationSessionStartedAt = null;
     if (st.bubbleShort === '停滞中！') {
       st.bubbleShort = '問題なし';
-      st.detailForHover = '問題なし、と報告しました。';
+      st.detailForHover = '';
       st.rowFallbackShort = '問題なし';
-      st.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
+      st.rowFallbackDetail = '';
     }
   }
 
@@ -437,11 +454,11 @@ export class ProgressReportingService {
       memberName: mem.name,
       memberPhotoUrl: mem.photoURL ?? null,
       short: 'もう終わる',
-      detail: 'もう終わる、と報告したタスクです。',
+      detail: '',
       isStagnating: false,
       expandDetailOnHover: false,
       bubbleKey: `${mem.uid}::doneA::${rid}${keySuffix}`,
-      alwaysShowDetail: true
+      alwaysShowDetail: false
     };
   }
 
@@ -491,6 +508,30 @@ export class ProgressReportingService {
     const rid = this.activeRoundIdByProject.get(projectId);
     if (!rid) return null;
     return this.memberStates.get(this.key(projectId, rid, memberId)) ?? null;
+  }
+
+  /**
+   * 既存ラウンドに当該メンバーの状態が無ければメモリ上に追加する（保存は呼び出し側の bump に任せる）。
+   * bump せず memberStates マップ上の参照を返す（保存直後の load で参照がずれるのを防ぐ）。
+   */
+  private ensureMemberProgressState(projectId: string, memberId: string): MemberProgressRoundState | null {
+    const uid = memberId?.trim();
+    if (!uid || !this.app.shouldReceiveProgressCheck(projectId, uid)) {
+      return null;
+    }
+
+    let rid = this.activeRoundIdByProject.get(projectId);
+    if (!rid) {
+      this.ensureMinimalRound(projectId);
+      rid = this.activeRoundIdByProject.get(projectId);
+    }
+    if (!rid) return null;
+
+    const k = this.key(projectId, rid, uid);
+    if (!this.memberStates.has(k)) {
+      this.memberStates.set(k, emptyMemberState(rid));
+    }
+    return this.memberStates.get(k) ?? null;
   }
 
   /** プロジェクト削除時: 進捗ラウンド・メンバー状態から除去して保存 */
@@ -647,7 +688,7 @@ export class ProgressReportingService {
       st.stage = 'awaiting_initial';
       st.bubbleShort = '要回答';
       st.detailForHover =
-        '相談が終わりました。表示された進捗確認から「もう終わる」「問題なし」「要相談」を選んでください。';
+        '相談が終わりました。表示された進捗確認から「もう終わる」「問題なし」「ちょっと相談」を選んでください。';
       st.rowFallbackShort = '要回答';
       st.rowFallbackDetail = st.detailForHover;
     }
@@ -664,9 +705,9 @@ export class ProgressReportingService {
     if (choice === '問題なし') {
       st.stage = 'done';
       st.bubbleShort = '問題なし';
-      st.detailForHover = '問題なし、と報告しました。';
+      st.detailForHover = '';
       st.rowFallbackShort = '問題なし';
-      st.rowFallbackDetail = st.detailForHover;
+      st.rowFallbackDetail = '';
       st.stagnations = [];
       st.stagnationSessionStartedAt = null;
       st.preResponseSnapshot = undefined;
@@ -760,7 +801,7 @@ export class ProgressReportingService {
       this.applyStagnation(projectId, memberId, st, it.parentTaskId, it.childTaskId ?? null, it.reason.trim());
     }
     st.rowFallbackShort = '問題なし';
-    st.rowFallbackDetail = '初期報告で停滞を付けなかったタスクは問題なしとして表示します。';
+    st.rowFallbackDetail = '';
     this.assignFanoutCoveredKeys(projectId, memberId, st);
     this.bump();
   }
@@ -782,14 +823,8 @@ export class ProgressReportingService {
     memberId: string,
     items: { parentTaskId: string; childTaskId: string | null; reason: string }[]
   ): void {
-    const st = this.getMemberState(projectId, memberId);
-    const rid = this.activeRoundIdByProject.get(projectId);
-    if (!st || !rid || st.roundId !== rid) {
-      this.ensureMinimalRound(projectId);
-    }
-    const st2 = this.getMemberState(projectId, memberId);
-    const rid2 = this.activeRoundIdByProject.get(projectId);
-    if (!st2 || !rid2) return;
+    const st2 = this.ensureMemberProgressState(projectId, memberId);
+    if (!st2) return;
     if (st2.stage === 'awaiting_initial' && st2.preResponseSnapshot) {
       this.restoreFromSnapshot(st2, st2.preResponseSnapshot);
       st2.preResponseSnapshot = undefined;
@@ -806,7 +841,7 @@ export class ProgressReportingService {
 
   /** 指定 id の停滞を解消。空配列なら全件解消 */
   resolveStagnation(projectId: string, memberId: string, stagnationIds?: string[]): void {
-    const st = this.getMemberState(projectId, memberId);
+    const st = this.ensureMemberProgressState(projectId, memberId);
     if (!st) return;
     const snap = st.preResponseSnapshot;
     const useSnap = !!snap && (st.stage === 'awaiting_initial' || st.stage === 'deferred_ai');
@@ -831,9 +866,9 @@ export class ProgressReportingService {
         snap.stagnations.length > 0 ? Math.min(...snap.stagnations.map((s) => s.startedAt)) : null;
       if (snap.stagnations.length === 0 && snap.bubbleShort === '停滞中！') {
         snap.bubbleShort = '問題なし';
-        snap.detailForHover = '問題なし、と報告しました。';
+        snap.detailForHover = '';
         snap.rowFallbackShort = '問題なし';
-        snap.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
+        snap.rowFallbackDetail = '';
       }
     } else {
       let removed: StagnationEntry[];
@@ -854,9 +889,9 @@ export class ProgressReportingService {
         st.stagnationSessionStartedAt = null;
         if (st.bubbleShort === '停滞中！') {
           st.bubbleShort = '問題なし';
-          st.detailForHover = '問題なし、と報告しました。';
+          st.detailForHover = '';
           st.rowFallbackShort = '問題なし';
-          st.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
+          st.rowFallbackDetail = '';
         }
       }
     }
@@ -921,7 +956,7 @@ export class ProgressReportingService {
   /** AI 推測結果を反映 */
   applyInferredFromAi(projectId: string, memberId: string, inferred: ProgressBubbleKind | undefined): void {
     if (inferred !== '問題なし' && inferred !== '考え中' && inferred !== '停滞中') return;
-    const st = this.getMemberState(projectId, memberId);
+    const st = this.ensureMemberProgressState(projectId, memberId);
     const rid = this.activeRoundIdByProject.get(projectId);
     if (!st || !rid || st.roundId !== rid) return;
     if (st.preResponseSnapshot && (st.stage === 'awaiting_initial' || st.stage === 'deferred_ai')) return;
@@ -1122,6 +1157,22 @@ export class ProgressReportingService {
       }
     }
 
+    if (this.matchesResolvedAnchor(st, parentTaskId, childTaskId)) {
+      return [
+        this.toStatusBubbleVm(
+          mem.uid,
+          mem.name,
+          mem.photoURL ?? null,
+          {
+            ...this.rowFallbackSyntheticState(st),
+            bubbleShort: '問題なし',
+            detailForHover: '停滞を解決しました。'
+          },
+          keySuffix
+        )
+      ];
+    }
+
     const uncovered = this.tryUncoveredInProgressBubble(
       st,
       mem,
@@ -1153,21 +1204,6 @@ export class ProgressReportingService {
     }
 
     if (st.bubbleShort === '停滞中！') {
-      if (this.matchesResolvedAnchor(st, parentTaskId, childTaskId)) {
-        return [
-          this.toStatusBubbleVm(
-            mem.uid,
-            mem.name,
-            mem.photoURL ?? null,
-            {
-              ...this.rowFallbackSyntheticState(st),
-              bubbleShort: '問題なし',
-              detailForHover: '停滞を解決しました。'
-            },
-            keySuffix
-          )
-        ];
-      }
       return [
         this.toStatusBubbleVm(
           mem.uid,
@@ -1246,7 +1282,7 @@ export class ProgressReportingService {
       return this.bubblesForAnchor(projectId, parent, PARENT_PROGRESS_ROW, viewerMemberId);
     }
     const out: ProgressBubbleVm[] = [];
-    for (const mem of this.app.getMembersByProjectId(projectId)) {
+    for (const mem of this.app.getAssignableMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
       const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
@@ -1283,7 +1319,7 @@ export class ProgressReportingService {
     }
 
     const out: ProgressBubbleVm[] = [];
-    for (const mem of this.app.getMembersByProjectId(projectId)) {
+    for (const mem of this.app.getAssignableMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
       if (anchor !== PARENT_PROGRESS_ROW) continue;
@@ -1337,7 +1373,7 @@ export class ProgressReportingService {
     taskStatus: TaskStatus
   ): ProgressBubbleVm[] {
     const out: ProgressBubbleVm[] = [];
-    for (const mem of this.app.getMembersByProjectId(projectId)) {
+    for (const mem of this.app.getAssignableMembersByProjectId(projectId)) {
       if (viewerMemberId && mem.uid === viewerMemberId) continue;
       if (!this.isMemberOfParentTeam(parent, mem.uid)) continue;
       const st = this.memberStates.get(this.key(projectId, rid, mem.uid)) ?? null;
@@ -1350,10 +1386,7 @@ export class ProgressReportingService {
     const short = (st.rowFallbackShort ?? '').trim() || '問題なし';
     let detail = (st.rowFallbackDetail ?? '').trim();
     if (!detail) {
-      detail =
-        short === '問題なし'
-          ? '停滞報告のないタスクは問題なしとして表示しています。'
-          : st.detailForHover || short;
+      detail = short === '問題なし' ? '' : st.detailForHover || short;
     }
     return { ...st, bubbleShort: short, detailForHover: detail };
   }
@@ -1365,20 +1398,19 @@ export class ProgressReportingService {
     st: MemberProgressRoundState,
     bubbleKeySuffix = ''
   ): ProgressBubbleVm {
+    const short = st.bubbleShort;
     let detail = st.detailForHover || st.bubbleShort;
-    if (st.bubbleShort === '考え中') {
-      detail = st.thinkingDetailLong || st.thinkingChatSnippet || st.detailForHover;
-    }
+    detail = statusBubbleVisibleDetail(short, detail);
     return {
       memberId,
       memberName,
       memberPhotoUrl: photoUrl,
-      short: st.bubbleShort,
+      short,
       detail,
       isStagnating: false,
       expandDetailOnHover: false,
       bubbleKey: `${memberId}::status::${st.roundId}${bubbleKeySuffix}`,
-      alwaysShowDetail: true
+      alwaysShowDetail: statusBubbleAlwaysShowDetail(detail)
     };
   }
 
@@ -1427,7 +1459,7 @@ export class ProgressReportingService {
     st.detailForHover = reason.trim();
     if (!st.rowFallbackShort?.trim()) {
       st.rowFallbackShort = '問題なし';
-      st.rowFallbackDetail = '停滞報告のないタスクは問題なしとして表示します。';
+      st.rowFallbackDetail = '';
     }
     this.clearThinkingFields(st);
     if (!st.fanoutCoveredKeys?.length) {

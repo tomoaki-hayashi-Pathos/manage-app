@@ -211,6 +211,28 @@
     margin-top: 0.5rem;
 }
 
+/* 子あり：親ステータスボタン非表示時の縦詰め（今日ページのみ） */
+.today-tasks-page .parent-info--child-compact .edit-hint {
+    margin: 0 0 3mm;
+}
+
+.today-tasks-page .parent-info--child-compact .title-row {
+    margin-bottom: 0.3rem;
+}
+
+.today-tasks-page .parent-info--child-compact ::ng-deep .parent-team-progress-wrap {
+    margin-top: 0;
+    padding-top: 0.35rem;
+}
+
+.today-tasks-page .parent-card__grid--child-compact {
+    padding-bottom: 5mm;
+}
+
+.today-tasks-page .today-card:has(.parent-card__grid--child-compact) {
+    padding-bottom: 5mm;
+}
+
 .today-action-btn--subtask-row {
     width: auto;
     flex: 0 0 auto;

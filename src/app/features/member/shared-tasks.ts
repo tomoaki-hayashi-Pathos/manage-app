@@ -10,17 +10,22 @@ import { AuthSessionService } from '../../services/auth-session.service';
 import { MemberTaskRouteContext, readMemberTaskRouteMode } from './member-task-route-context';
 import { MemberAccessService } from '../../services/member-access.service';
 import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
+import { ProgressReportingService } from '../../services/progress-reporting.service';
 import {
     defaultToolbarFilterState,
     parentMatchesToolbarFilters,
+    type TaskToolbarFilterMode,
     type TaskToolbarFilterState,
+    type ToolbarFilterContext,
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 import { showAdminDrawerLink, type AdminDrawerNavTarget } from '../admin/admin-drawer-nav.util';
 
 @Component({
     selector: 'app-shared-tasks',
     standalone: true,
-    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
+    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent, ProjectTopMenuComponent, DrawerLogoutComponent],
     templateUrl: './shared-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './shared-tasks.css']
 })
@@ -31,6 +36,7 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     private readonly auth = inject(AuthSessionService);
     private readonly router = inject(Router);
     private readonly memberAccess = inject(MemberAccessService);
+    private readonly progress = inject(ProgressReportingService);
 
     private readonly ctx = new MemberTaskRouteContext(this.route, this.appService, this.auth, this.router);
 
@@ -109,7 +115,9 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     }
 
     get projectName(): string {
-        if (this.ctx.mode === 'personal') return '個人タスク';
+        if (this.ctx.mode === 'personal') {
+            return this.appService.getProjectDisplayName(this.projectId);
+        }
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
@@ -118,7 +126,7 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     }
 
     get sharedParents(): ParentTask[] {
-        const base = this.appService.getSortedParentTasksForProject(this.projectId, false);
+        const base = this.appService.getActiveSortedParentTasksForProject(this.projectId);
         if (this.isAdminView) {
             return base.filter((t) => this.appService.isSharedTaskVisibleToAdmin(t));
         }
@@ -133,8 +141,17 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
         return [...this.sharedParents];
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return this.ctx.mode === 'personal';
+    toolbarFilterMode(): TaskToolbarFilterMode {
+        return this.ctx.mode === 'personal' ? 'member' : 'manage';
+    }
+
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: (parentTaskId, childTaskId) =>
+                this.progress.hasOpenStagnationForTask(this.projectId, parentTaskId, childTaskId)
+        };
     }
 
     onParentSortPick(kind: 'deadline' | 'status'): void {
@@ -146,7 +163,9 @@ export class SharedTasksComponent implements OnInit, OnDestroy {
     }
 
     get visibleSharedParents(): ParentTask[] {
-        return this.sharedParents.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
+        return this.sharedParents.filter((t) =>
+            parentMatchesToolbarFilters(this.toolbarFilterCtx(), t, this.toolbarFilter, this.toolbarFilterMode())
+        );
     }
 
     canUnshare(task: ParentTask): boolean {

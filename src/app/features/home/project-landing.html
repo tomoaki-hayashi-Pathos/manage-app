@@ -1,0 +1,100 @@
+<div class="landing">
+    <div class="landing__card card-elevated landing__card--rich">
+        <p class="landing__eyebrow">Task Manage</p>
+        <h1 class="landing__title">プロジェクト</h1>
+        @if (!app.ready() || auth.loading()) {
+            <p class="landing__lead">読み込み中…</p>
+        } @else {
+            <p class="landing__lead">新しいプロジェクトを始めるか、チームの参加コードで参加しましょう。</p>
+            <div class="landing__actions">
+                <button type="button" class="btn btn--primary landing__cta" (click)="openCreate()">プロジェクト作成</button>
+                <button type="button" class="btn landing__cta landing__cta--secondary" (click)="openJoin()">参加コード入力</button>
+            </div>
+            @if (waitingApproval()) {
+                <p class="landing__pending" role="status">承認待機中 — 責任者の承認をお待ちください。</p>
+                <ul class="landing__pending-list">
+                    @for (p of pendingJoins(); track p.projectId) {
+                        <li>{{ projectNameForJoin(p) }}</li>
+                    }
+                </ul>
+            }
+            <button type="button" class="btn btn--ghost landing__logout" (click)="logout()">ログアウト</button>
+        }
+    </div>
+</div>
+
+@if (createOpen()) {
+    <div class="landing-modal-backdrop" (click)="createOpen.set(false)"></div>
+    <div class="landing-modal card-elevated landing-modal--rich">
+        <h2 class="landing-modal__title">プロジェクト作成</h2>
+        <p class="landing-modal__lead">名前と種別を入力して作成します。</p>
+        <label class="landing-field">
+            <span class="landing-field__label">名前</span>
+            <input type="text" [(ngModel)]="createName" class="input-pill" placeholder="例: 新商品リリース" />
+        </label>
+        <label class="landing-field">
+            <span class="landing-field__label">説明</span>
+            <textarea [(ngModel)]="createDescription" class="input-pill" rows="2" placeholder="任意"></textarea>
+        </label>
+        <label class="landing-field">
+            <span class="landing-field__label">種別</span>
+            <select [(ngModel)]="createIsPersonal" class="input-pill">
+                <option [ngValue]="false">チーム</option>
+                <option [ngValue]="true">個人</option>
+            </select>
+        </label>
+        <div class="landing-modal__actions">
+            <button type="button" class="btn" (click)="createOpen.set(false)">キャンセル</button>
+            <button type="button" class="btn btn--primary" (click)="submitCreate()">作成</button>
+        </div>
+    </div>
+}
+
+@if (createdSuccessOpen()) {
+    <div class="landing-modal-backdrop" (click)="closeCreatedSuccess()"></div>
+    <div class="landing-modal card-elevated landing-modal--rich landing-modal--success">
+        <h2 class="landing-modal__title">作成しました</h2>
+        <p class="landing-modal__lead">プロジェクトが作成されました。</p>
+        @if (!createdWasPersonal) {
+            <div class="landing-invite-box">
+                <span class="landing-invite-box__label">参加コード（ID 末尾 6 桁）</span>
+                <div class="landing-invite-box__row">
+                    <code class="landing-invite-box__code">{{ createdInviteCode() }}</code>
+                    <button type="button" class="btn btn--primary btn--compact" (click)="copyInviteCode()">コピー</button>
+                </div>
+                @if (copyDone()) {
+                    <p class="landing-invite-box__hint landing-invite-box__hint--ok">クリップボードにコピーしました</p>
+                } @else {
+                    <p class="landing-invite-box__hint">チームメンバーにこのコードを共有してください。</p>
+                }
+            </div>
+        }
+        <div class="landing-modal__actions">
+            <button type="button" class="btn btn--primary" (click)="closeCreatedSuccess()">了解</button>
+        </div>
+    </div>
+}
+
+@if (joinOpen()) {
+    <div class="landing-modal-backdrop" (click)="joinOpen.set(false)"></div>
+    <div class="landing-modal card-elevated landing-modal--rich">
+        <h2 class="landing-modal__title">参加コード入力</h2>
+        <p class="landing-modal__lead">チームプロジェクト ID の末尾 6 文字を入力してください。</p>
+        <input type="text" [(ngModel)]="joinCode" class="input-pill landing-code-input" maxlength="6" placeholder="例: A1B2C3" />
+        <div class="landing-modal__actions">
+            <button type="button" class="btn" (click)="joinOpen.set(false)">キャンセル</button>
+            <button type="button" class="btn btn--primary" (click)="submitJoin()">申請する</button>
+        </div>
+    </div>
+}
+
+@if (approvedModalOpen()) {
+    <div class="landing-modal-backdrop"></div>
+    <div class="landing-modal card-elevated landing-modal--rich landing-modal--success">
+        <h2 class="landing-modal__title">承認されました</h2>
+        <p class="landing-modal__lead">プロジェクトへの参加が承認されました。</p>
+        <div class="landing-modal__actions">
+            <button type="button" class="btn btn--primary" (click)="dismissApprovedModal()">了解</button>
+        </div>
+    </div>
+}

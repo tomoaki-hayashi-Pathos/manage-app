@@ -1,0 +1,38 @@
+@if (open) {
+    <div class="audit-modal-backdrop" (click)="close()" aria-hidden="true"></div>
+    <div class="audit-modal" role="dialog" aria-labelledby="audit-modal-title" (click)="$event.stopPropagation()">
+        <header class="audit-modal__header">
+            <h2 id="audit-modal-title" class="audit-modal__title">監査ログ</h2>
+            <p class="audit-modal__sub">{{ projectName || 'プロジェクト' }} · 直近90日</p>
+            <button type="button" class="audit-modal__close" (click)="close()" aria-label="閉じる">×</button>
+        </header>
+        <div class="audit-modal__actions">
+            <button type="button" class="btn btn--compact" (click)="exportCsv()">監査CSV</button>
+        </div>
+        @if (!entries.length) {
+            <p class="audit-modal__empty">記録はまだありません。</p>
+        } @else {
+            <div class="audit-modal__table-wrap">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>日時</th>
+                            <th>実行者</th>
+                            <th>概要</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (e of entries; track e.id) {
+                            <tr>
+                                <td class="audit-table__at">{{ formatAt(e.at) }}</td>
+                                <td>{{ e.actorName }}</td>
+                                <td>{{ e.summary }}</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+

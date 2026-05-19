@@ -1,4 +1,6 @@
+import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { map } from 'rxjs/operators';
 import { AppService } from '../../app.service';
 import { AuthSessionService } from '../../services/auth-session.service';
 import type { MemberAccessService } from '../../services/member-access.service';
@@ -14,12 +16,24 @@ export function readMemberTaskRouteMode(route: ActivatedRoute): MemberTaskRouteM
 
 /** メンバー系画面の projectId / memberId をルート種別に応じて解決する */
 export class MemberTaskRouteContext {
+    private readonly routeProjectId;
+    private readonly routeMemberId;
+
     constructor(
         private readonly route: ActivatedRoute,
         private readonly app: AppService,
         private readonly auth: AuthSessionService,
         private readonly router: Router
-    ) {}
+    ) {
+        this.routeProjectId = toSignal(
+            this.route.paramMap.pipe(map((p) => p.get('projectId') ?? '')),
+            { initialValue: this.route.snapshot.paramMap.get('projectId') ?? '' }
+        );
+        this.routeMemberId = toSignal(
+            this.route.paramMap.pipe(map((p) => p.get('memberId') ?? '')),
+            { initialValue: this.route.snapshot.paramMap.get('memberId') ?? '' }
+        );
+    }
 
     get mode(): MemberTaskRouteMode {
         return readMemberTaskRouteMode(this.route);
@@ -30,14 +44,14 @@ export class MemberTaskRouteContext {
             const uid = this.app.getMemberByEmail(this.auth.currentEmail())?.uid;
             return uid ? this.app.resolvePersonalTaskProjectIdForMember(uid) : '';
         }
-        return this.route.snapshot.paramMap.get('projectId') ?? '';
+        return this.routeProjectId();
     }
 
     get memberId(): string {
         if (this.mode === 'personal') {
             return this.app.getMemberByEmail(this.auth.currentEmail())?.uid ?? '';
         }
-        return this.route.snapshot.paramMap.get('memberId') ?? '';
+        return this.routeMemberId();
     }
 
     /** 個人モードでログインとメンバー紐付けが取れないときはトップへ */

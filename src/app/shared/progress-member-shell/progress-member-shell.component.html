@@ -1,4 +1,4 @@
-@if (!suppressProgressStagnationUi) {
+@if (!suppressProgressStagnationUi && !hideStagnationActionBar) {
     <div class="stagnation-action-bar">
         <button type="button" class="btn-stagnation-report" (click)="openManualStagnationModal()">停滞報告 😢</button>
         @if (isStagnatingSelf()) {
@@ -27,7 +27,7 @@
             <div class="modal-actions">
                 <button type="button" class="progress-shell-modal__btn progress-shell-modal__btn--primary" (click)="pickInitial('もう終わる')">もう終わる</button>
                 <button type="button" class="progress-shell-modal__btn" (click)="pickInitial('問題なし')">問題なし</button>
-                <button type="button" class="progress-shell-modal__btn" (click)="pickInitial('要相談')">要相談</button>
+                <button type="button" class="progress-shell-modal__btn" (click)="pickInitial('要相談')">ちょっと相談</button>
             </div>
         </div>
     </div>

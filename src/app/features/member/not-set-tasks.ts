@@ -10,16 +10,19 @@ import { Router } from '@angular/router';
 import { MemberTaskRouteContext } from './member-task-route-context';
 import { MemberAccessService } from '../../services/member-access.service';
 import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
 import {
     defaultToolbarFilterState,
     parentMatchesToolbarFilters,
     type TaskToolbarFilterState,
+    type ToolbarFilterContext,
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 
 @Component({
     selector: 'app-not-set-tasks',
     standalone: true,
-    imports: [FormsModule, CommonModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
+    imports: [FormsModule, CommonModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent, ProjectTopMenuComponent, DrawerLogoutComponent],
     templateUrl: './not-set-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './not-set-tasks.css']
 })
@@ -53,7 +56,9 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
     }
 
     get projectName(): string {
-        if (this.ctx.mode === 'personal') return '個人タスク';
+        if (this.ctx.mode === 'personal') {
+            return this.appService.getProjectDisplayName(this.projectId);
+        }
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
@@ -99,6 +104,7 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
         return this.appService.parentTasks.filter(
             (t) =>
                 t.projectId === this.projectId &&
+                (this.appService.isActiveParentTask(t) || this.appService.isAssigneeOnlyDraftParent(t)) &&
                 (t.leadAssigneeId === this.memberId || t.memberIds.includes(this.memberId)) &&
                 NotSetTasksComponent.deadlineUnset(t.deadline) &&
                 !t.isTodayTask
@@ -129,8 +135,12 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
         return [...this.eligibleParents];
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return this.ctx.mode === 'personal';
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: () => false
+        };
     }
 
     private sortEligibleParents(a: ParentTask, b: ParentTask): number {
@@ -143,7 +153,7 @@ export class NotSetTasksComponent implements OnInit, OnDestroy {
     get visibleParents(): ParentTask[] {
         return [...this.eligibleParents]
             .sort((a, b) => this.sortEligibleParents(a, b))
-            .filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
+            .filter((t) => parentMatchesToolbarFilters(this.toolbarFilterCtx(), t, this.toolbarFilter, 'minimal'));
     }
 
     toggleToday(task: ParentTask): void {

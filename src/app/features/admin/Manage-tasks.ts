@@ -1,6 +1,9 @@
 // 親タスク管理ページ
 
-import { Component, ElementRef, HostListener, ViewChild, effect, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, DestroyRef, ElementRef, HostListener, ViewChild, inject, OnDestroy, OnInit } from '@angular/core';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { combineLatest } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 import { AppService } from '../../app.service';
 
@@ -13,12 +16,13 @@ import { CommonModule } from '@angular/common';
 import { ParentTask, Member, TaskStatus, ChildTask, MENTION_ALL, MENTION_ADMIN, AdminNavPageKey } from '../../core/interface';
 
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { ProgressReportingService } from '../../services/progress-reporting.service';
+import { ProgressReportingService, type ProgressBubbleVm } from '../../services/progress-reporting.service';
 import { AiChatService } from '../../services/ai-chat.service';
 import {
     StorageService,
     storageKeyAdminTaskChangeBundle,
-    storageKeyConsultationBundle
+    storageKeyConsultationBundle,
+    storageKeyManageParentListCompact
 } from '../../services/storage.service';
 import type { ConsultationProjectBundle } from '../../core/progress-chat.types';
 import {
@@ -32,12 +36,19 @@ import { AdminProjectAccessService } from '../../services/admin-project-access.s
 import { AuthSessionService } from '../../services/auth-session.service';
 import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
 import {
+    canReorderList,
     defaultToolbarFilterState,
-    isToolbarFilterDefault,
     parentMatchesToolbarFilters,
+    removeParentIdFromFilter,
     type TaskToolbarFilterState,
+    type ToolbarFilterContext,
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 import { showAdminDrawerLink, type AdminDrawerNavTarget } from './admin-drawer-nav.util';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
+import { AuditLogModalComponent } from '../../shared/audit-log-modal/audit-log-modal.component';
+import { CharacterVideoDockComponent } from '../../shared/character-video-dock/character-video-dock.component';
+import { buildTasksExportCsv, csvFilenameBase, downloadCsv } from '../../core/csv-export.util';
 
 type ParentEditDraft = {
     title: string;
@@ -65,7 +76,11 @@ type ChildEditDraft = {
         MemberProgressBubblesComponent,
         ProgressMemberShellComponent,
         ParentTeamProgressStripComponent,
-        TaskSearchFilterToolbarComponent
+        TaskSearchFilterToolbarComponent,
+        ProjectTopMenuComponent,
+        DrawerLogoutComponent,
+        AuditLogModalComponent,
+        CharacterVideoDockComponent
     ],
     templateUrl: './Manage-tasks.html',
     styleUrls: ['./Manage-tasks.css', '../../progress-ai.css']
@@ -89,22 +104,53 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     private readonly adminAccess = inject(AdminProjectAccessService);
     private readonly auth = inject(AuthSessionService);
     private readonly router = inject(Router);
+    private readonly destroyRef = inject(DestroyRef);
 
-    readonly projectId = this.route.snapshot.params['projectId'] as string;
-    private readonly accessEffect = effect(() => {
-        this.adminAccess.redirectIfForbidden(this.projectId);
-    });
+    private readonly routeProjectId = toSignal(
+        this.route.paramMap.pipe(map((p) => p.get('projectId') ?? '')),
+        { initialValue: this.route.snapshot.paramMap.get('projectId') ?? '' }
+    );
+    private readonly routeProjectId$ = toObservable(this.routeProjectId);
+    private readonly appReady$ = toObservable(this.appService.ready);
+    private readonly authLoading$ = toObservable(this.auth.loading);
+    private readonly notificationTick$ = toObservable(this.appService.notificationTick);
+    private boundProjectId: string | null = null;
+    private consultUnsub: (() => void) | null = null;
+    private taskChangeUnsub: (() => void) | null = null;
+
+    get projectId(): string {
+        return this.routeProjectId();
+    }
 
     get projectName(): string {
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
-    readonly characterVideoSrc = 'assets/character-typing.mp4';
+
+    get characterDockBubbleOpen(): boolean {
+        return this.characterBubbleVisible || this.characterHoverHint;
+    }
+
+    get characterDockBubbleLine(): string {
+        if (this.characterBubbleVisible) return this.characterBubbleText;
+        if (this.characterHoverHint) return ManageTasksComponent.CHARACTER_HOVER_HINT;
+        return '';
+    }
+
+    onCharacterDockPointerEnter(): void {
+        if (this.characterBubbleVisible) return;
+        this.characterHoverHint = true;
+    }
+
+    onCharacterDockPointerLeave(): void {
+        this.characterHoverHint = false;
+    }
+    readonly characterVideoSrc = '/assets/character-typing.mp4';
+    private static readonly CHARACTER_HOVER_HINT = '話し聞くよ？';
     characterBubbleVisible = false;
     characterBubbleText = '';
+    characterHoverHint = false;
     /** 要相談・メンバー変更通知表示中は確認ボタンを出す */
     consultationConfirm = false;
-    private consultUnsub: (() => void) | null = null;
-    private taskChangeUnsub: (() => void) | null = null;
     private adminBubbleRefreshSeq = 0;
     private characterShowTimerId: number | null = null;
     private characterHideTimerId: number | null = null;
@@ -124,6 +170,11 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
 
     viewMode: number = 0;
+
+    /** 設定未完成一覧：一括操作用 */
+    incompleteBulkPanel: 'assignee' | 'deadline' | 'both' | null = null;
+    incompleteBulkDraft = { selectionOrder: [] as string[], deadlineInput: '', isUrgent: false };
+    private readonly incompleteSelectedIds = new Set<string>();
     /** 左フォーム「担当｜メンバー」2人以上のとき折りたたみ用 */
     createMemberAssignSectionOpen = true;
 
@@ -131,6 +182,15 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     /** 親の子一覧が 3 件以上のときの折りたたみ（today / limit と同仕様） */
     expandedSubChildren: Record<string, boolean> = {};
+
+    /** 一覧を縮小表示（localStorage と同期） */
+    globalListCompact = false;
+
+    /** 縮小モードで個別に展開した親 */
+    private parentExpandedOverrides: Record<string, boolean> = {};
+
+    /** 一括縮小後に追加された親は次の一括縮小まで展開 */
+    private exemptFromCompactParentIds = new Set<string>();
 
     get gearNotifyTotal(): number {
         void this.appService.notificationTick();
@@ -143,13 +203,26 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     ngOnInit(): void {
-        this.appService.setAdminCurrentNavPage(this.projectId, null);
-        this.progress.setAdminPageActive(this.projectId, true);
-        this.progress.ensureProgressRoundForProject(this.projectId);
-        const refreshBubble = () => void this.refreshAdminBubbleFromStorage();
-        this.consultUnsub = this.storage.watchKey(storageKeyConsultationBundle(this.projectId), refreshBubble);
-        this.taskChangeUnsub = this.storage.watchKey(storageKeyAdminTaskChangeBundle(this.projectId), refreshBubble);
-        void this.refreshAdminBubbleFromStorage();
+        combineLatest([this.routeProjectId$, this.appReady$, this.authLoading$])
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(([pid, ready, loading]) => {
+                if (!ready || loading) {
+                    this.unbindProjectScope();
+                    return;
+                }
+                this.syncProjectScope(pid);
+            });
+
+        this.notificationTick$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                const pid = this.routeProjectId();
+                if (!pid || this.boundProjectId === pid) return;
+                if (!this.appService.ready() || this.auth.loading()) return;
+                if (!this.appService.projects.some((p) => p.id === pid)) return;
+                this.syncProjectScope(pid);
+            });
+
         this.startCharacterBubbleLoop();
         if (this.users.length >= 2) {
             this.createMemberAssignSectionOpen = false;
@@ -161,16 +234,50 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
-        this.appService.setAdminCurrentNavPage(this.projectId, null);
-        this.progress.setAdminPageActive(this.projectId, false);
+        this.unbindProjectScope();
+        this.clearCharacterBubbleTimers();
+    }
+
+    private syncProjectScope(pid: string): void {
+        if (!pid) {
+            this.unbindProjectScope();
+            return;
+        }
+        if (!this.appService.projects.some((p) => p.id === pid)) {
+            this.unbindProjectScope();
+            return;
+        }
+        if (this.boundProjectId === pid) return;
+        this.unbindProjectScope();
+        if (this.adminAccess.redirectIfForbidden(pid)) return;
+        this.bindProjectScope(pid);
+    }
+
+    private bindProjectScope(pid: string): void {
+        this.boundProjectId = pid;
+        this.loadListCompactPreference(pid);
+        this.appService.setAdminCurrentNavPage(pid, null);
+        this.progress.setAdminPageActive(pid, true);
+        this.progress.ensureProgressRoundForProject(pid);
+        const refreshBubble = () => void this.refreshAdminBubbleFromStorage();
+        this.consultUnsub = this.storage.watchKey(storageKeyConsultationBundle(pid), refreshBubble);
+        this.taskChangeUnsub = this.storage.watchKey(storageKeyAdminTaskChangeBundle(pid), refreshBubble);
+        void this.refreshAdminBubbleFromStorage();
+    }
+
+    private unbindProjectScope(): void {
+        const pid = this.boundProjectId;
+        if (!pid) return;
+        this.appService.setAdminCurrentNavPage(pid, null);
+        this.progress.setAdminPageActive(pid, false);
         this.consultUnsub?.();
         this.consultUnsub = null;
         this.taskChangeUnsub?.();
         this.taskChangeUnsub = null;
-        this.clearCharacterBubbleTimers();
-        if (this.aiChat.chatOpen() && this.aiChat.projectIdOpen() === this.projectId) {
+        if (this.aiChat.chatOpen() && this.aiChat.projectIdOpen() === pid) {
             this.aiChat.closeChat();
         }
+        this.boundProjectId = null;
     }
 
     /** 管理画面左下 OL：メンバー文脈で AI 相談（進捗の deferred は起こさない） */
@@ -209,7 +316,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     requestProgressCheck(): void {
         const targets = this.appService
-            .getMembersByProjectId(this.projectId)
+            .getAssignableMembersByProjectId(this.projectId)
             .filter((m) => this.appService.shouldReceiveProgressCheck(this.projectId, m.uid));
         const deferred = new Set(
             targets.map((m) => m.uid).filter((uid) => this.aiChat.isChatActiveFor(this.projectId, uid))
@@ -219,7 +326,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
             alert('進捗確認の対象となるメンバーがいません（責任者は進行中の関与タスクがある場合のみ対象です）。');
             return;
         }
-        alert(`${targets.length}名に進捗の報告（もう終わる / 問題なし / 要相談）を促しました。`);
+        alert(`${targets.length}名に進捗の報告（もう終わる / 問題なし / ちょっと相談）を促しました。`);
     }
 
     progressBubblesForChild(task: ParentTask, child: ChildTask) {
@@ -241,6 +348,8 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     /** 右上オーバーメニュー */
     rightMenuOpen = false;
 
+    auditModalOpen = false;
+
     /** メインカードの親タスク編集 */
     parentEditTaskId: string | null = null;
     parentEditDraft: ParentEditDraft | null = null;
@@ -249,12 +358,8 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     childEditId: string | null = null;
     childEditDraft: ChildEditDraft | null = null;
 
-    /** サイドバー「未完成」一覧のインライン編集 */
-    sidebarIncompleteEditId: string | null = null;
-    sidebarIncompleteDraft: ParentEditDraft | null = null;
-
     get users(): Member[] {
-        const list = [...this.appService.getMembersByProjectId(this.projectId)];
+        const list = [...this.appService.getAssignableMembersByProjectId(this.projectId)];
         const p = this.appService.projects.find((x) => x.id === this.projectId);
         if (p?.adminId) {
             const adminMem = this.appService.getMemberById(p.adminId);
@@ -268,6 +373,16 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     /** 管理者用メンバー画面ルート用 */
     get adminSelfMemberUid(): string {
         return this.appService.getMemberByEmail(this.auth.currentEmail())?.uid ?? '';
+    }
+
+    /** 監査ログ・作成者記録用（ログイン責任者 → プロジェクト責任者 → Auth UID） */
+    private auditActorUid(): string | null {
+        const uid =
+            this.adminSelfMemberUid ||
+            this.appService.getProjectAdminId(this.projectId) ||
+            this.auth.user()?.uid ||
+            null;
+        return uid?.trim() ? uid : null;
     }
 
     /** 責任者が進行中タスクに関与しているときだけ進捗・停滞シェルを表示 */
@@ -288,7 +403,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     get baseVisibleParentTasks(): ParentTask[] {
         return this.appService
-            .getSortedParentTasksForProject(this.projectId, false)
+            .getActiveSortedParentTasksForProject(this.projectId)
             .filter((t) => !this.appService.shouldExcludePrivateMyFromAdmin(t));
     }
 
@@ -296,12 +411,143 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         return this.baseVisibleParentTasks;
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return false;
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: (parentTaskId, childTaskId) =>
+                this.progress.hasOpenStagnationForTask(this.projectId, parentTaskId, childTaskId)
+        };
     }
 
     parentListDragEnabled(): boolean {
-        return isToolbarFilterDefault(this.toolbarFilter);
+        return canReorderList(this.toolbarFilter);
+    }
+
+    listDensityToggleLabel(): string {
+        return this.globalListCompact ? '展開' : '縮小';
+    }
+
+    toggleListDensityMode(): void {
+        if (this.globalListCompact) {
+            this.globalListCompact = false;
+        } else {
+            this.globalListCompact = true;
+            this.exemptFromCompactParentIds.clear();
+        }
+        this.persistListCompactPreference();
+    }
+
+    isParentCardExpanded(parentId: string): boolean {
+        if (!this.globalListCompact) return true;
+        if (this.parentExpandedOverrides[parentId]) return true;
+        if (this.exemptFromCompactParentIds.has(parentId)) return true;
+        return false;
+    }
+
+    expandParentCard(parentId: string, ev?: Event): void {
+        ev?.stopPropagation();
+        this.parentExpandedOverrides[parentId] = true;
+    }
+
+    collapseParentCard(parentId: string, ev?: Event): void {
+        ev?.stopPropagation();
+        if (this.isParentTaskEditing(parentId)) return;
+        delete this.parentExpandedOverrides[parentId];
+        this.exemptFromCompactParentIds.delete(parentId);
+    }
+
+    canCollapseParentCard(parentId: string): boolean {
+        return this.globalListCompact && this.isParentCardExpanded(parentId) && !this.isParentTaskEditing(parentId);
+    }
+
+    isParentTaskEditing(parentId: string): boolean {
+        if (this.parentEditTaskId === parentId) return true;
+        if (!this.childEditId) return false;
+        const child = this.appService.childTasks.find((c) => c.id === this.childEditId);
+        return child?.parentTaskId === parentId;
+    }
+
+    parentCompactBlinkClass(task: ParentTask): string {
+        if (!task.deadline || AppService.deadlineUnset(task.deadline)) return '';
+        const end = new Date(task.deadline as Date | string);
+        if (Number.isNaN(end.getTime())) return '';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dueDay = new Date(end);
+        dueDay.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+        if (diffDays === 0 || diffDays === 1) return 'parent-card--compact-blink';
+        return '';
+    }
+
+    formatDeadlineCompact(deadline: Date | string | null): string {
+        if (!deadline) return '期限未設定';
+        const d = new Date(deadline);
+        if (Number.isNaN(d.getTime())) return '期限未設定';
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    /** 縮小行：担当アイコン左の代表吹き出し（1件） */
+    compactSpeechBubblesForParent(task: ParentTask): ProgressBubbleVm[] {
+        void this.progress.progressRevision();
+        const children = this.appService.getWorkViewChildTasksByParentId(task.id);
+        if (children.length > 0) {
+            const stagnantChild = children.find((c) =>
+                this.progress.hasOpenStagnationForTask(this.projectId, task.id, c.id)
+            );
+            const child = stagnantChild ?? this.pickCompactRepresentativeChild(task, children);
+            return this.pickOneCompactBubble(this.progressBubblesForChild(task, child));
+        }
+        const parentBubbles = this.progressBubblesParentOnly(task);
+        if (!parentBubbles.length) return [];
+        const leadId = task.leadAssigneeId;
+        const leadBubble = leadId ? parentBubbles.find((b) => b.memberId === leadId) : undefined;
+        return [leadBubble ?? parentBubbles[0]];
+    }
+
+    private pickCompactRepresentativeChild(task: ParentTask, children: ChildTask[]): ChildTask {
+        for (const c of children) {
+            const bubbles = this.progressBubblesForChild(task, c);
+            if (bubbles.some((b) => this.isCompactProblemBubble(b))) return c;
+        }
+        return children[0];
+    }
+
+    private pickOneCompactBubble(bubbles: ProgressBubbleVm[]): ProgressBubbleVm[] {
+        if (!bubbles.length) return [];
+        const stagnant = bubbles.find((b) => b.isStagnating || (b.short || '').trim() === '停滞中！');
+        if (stagnant) return [stagnant];
+        const problem = bubbles.find((b) => this.isCompactProblemBubble(b));
+        return [problem ?? bubbles[0]];
+    }
+
+    private isCompactProblemBubble(b: ProgressBubbleVm): boolean {
+        if (b.isStagnating) return true;
+        const s = (b.short || '').trim();
+        if (!s || s === '—' || s === '問題なし' || s === 'もう終わる') return false;
+        if (s === '停滞中！' || s === '考え中' || s === '要回答' || s === '質問中') return true;
+        return s.includes('相談');
+    }
+
+    private loadListCompactPreference(projectId: string): void {
+        const uid = this.adminSelfMemberUid || this.appService.getProjectAdminId(projectId) || '';
+        if (!uid) {
+            this.globalListCompact = false;
+            return;
+        }
+        const raw = this.storage.getJson<boolean | null>(storageKeyManageParentListCompact(projectId, uid));
+        this.globalListCompact = raw === true;
+        this.parentExpandedOverrides = {};
+        this.exemptFromCompactParentIds.clear();
+    }
+
+    private persistListCompactPreference(): void {
+        const pid = this.projectId;
+        const uid = this.adminSelfMemberUid || this.appService.getProjectAdminId(pid) || '';
+        if (!pid || !uid) return;
+        this.storage.setJson(storageKeyManageParentListCompact(pid, uid), this.globalListCompact);
     }
 
     onParentSortPick(kind: 'deadline' | 'status'): void {
@@ -313,27 +559,139 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     get visibleParentTasks(): ParentTask[] {
-        return this.baseVisibleParentTasks.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
+        return this.baseVisibleParentTasks.filter((t) =>
+            parentMatchesToolbarFilters(this.toolbarFilterCtx(), t, this.toolbarFilter, 'manage')
+        );
     }
 
     get viewModeLabel(): string {
-        const labels = ['全未入力タスク一覧', '期限未入力タスク', '担当者未入力タスク'];
+        const labels = ['担当・期限未設定タスク', '期限未設定タスク', '担当未設定タスク'];
         return labels[this.viewMode];
     }
 
     get filteredIncompleteTasks(): ParentTask[] {
         const pool = this.appService.parentTasks.filter((t) => t.projectId === this.projectId && t.isDraft);
-        if (this.viewMode === 1) {
-            return pool.filter((t) => !t.deadline);
-        }
-        if (this.viewMode === 2) {
-            return pool.filter((t) => !t.leadAssigneeId);
-        }
-        return pool;
+        return pool.filter((t) => {
+            const noDeadline = AppService.deadlineUnset(t.deadline);
+            const noLead = !t.leadAssigneeId;
+            if (this.viewMode === 1) return noDeadline && !noLead;
+            if (this.viewMode === 2) return !noDeadline && noLead;
+            return noDeadline && noLead;
+        });
+    }
+
+    get incompleteShowAssigneeBtn(): boolean {
+        return this.viewMode === 2;
+    }
+
+    get incompleteShowDeadlineBtn(): boolean {
+        return this.viewMode === 1;
+    }
+
+    get incompleteShowBothBtn(): boolean {
+        return this.viewMode === 0;
+    }
+
+    incompleteRowShowsAssignees(task: ParentTask): boolean {
+        return !!task.leadAssigneeId && AppService.deadlineUnset(task.deadline);
+    }
+
+    incompleteRowShowsDeadline(task: ParentTask): boolean {
+        return !task.leadAssigneeId && !!task.deadline && !AppService.deadlineUnset(task.deadline);
     }
 
     toggleViewMode(): void {
         this.viewMode = (this.viewMode + 1) % 3;
+        this.closeIncompleteBulkPanel();
+        this.incompleteSelectedIds.clear();
+    }
+
+    isIncompleteSelected(taskId: string): boolean {
+        return this.incompleteSelectedIds.has(taskId);
+    }
+
+    toggleIncompleteSelection(taskId: string, checked: boolean): void {
+        if (checked) this.incompleteSelectedIds.add(taskId);
+        else this.incompleteSelectedIds.delete(taskId);
+    }
+
+    openIncompleteBulkPanel(kind: 'assignee' | 'deadline' | 'both'): void {
+        this.incompleteBulkPanel = kind;
+        this.incompleteBulkDraft = { selectionOrder: [], deadlineInput: '', isUrgent: false };
+    }
+
+    closeIncompleteBulkPanel(): void {
+        this.incompleteBulkPanel = null;
+        this.incompleteBulkDraft = { selectionOrder: [], deadlineInput: '', isUrgent: false };
+    }
+
+    isIncompleteBulkMemberChecked(uid: string): boolean {
+        return this.incompleteBulkDraft.selectionOrder.includes(uid);
+    }
+
+    onIncompleteBulkMemberChange(uid: string, checked: boolean): void {
+        if (checked) {
+            if (!this.incompleteBulkDraft.selectionOrder.includes(uid)) {
+                this.incompleteBulkDraft.selectionOrder.push(uid);
+            }
+        } else {
+            this.incompleteBulkDraft.selectionOrder = this.incompleteBulkDraft.selectionOrder.filter((id) => id !== uid);
+        }
+    }
+
+    toggleIncompleteBulkUrgent(): void {
+        this.incompleteBulkDraft.isUrgent = !this.incompleteBulkDraft.isUrgent;
+    }
+
+    applyIncompleteBulk(): void {
+        const taskIds = [...this.incompleteSelectedIds];
+        if (taskIds.length === 0) {
+            alert('タスクを1件以上選択してください');
+            return;
+        }
+        const panel = this.incompleteBulkPanel;
+        if (!panel) return;
+
+        const needsAssignee = panel === 'assignee' || panel === 'both';
+        const needsDeadline = panel === 'deadline' || panel === 'both';
+        if (needsAssignee && this.incompleteBulkDraft.selectionOrder.length === 0) {
+            alert('担当者を1人以上選択してください');
+            return;
+        }
+        if (needsDeadline && !this.incompleteBulkDraft.deadlineInput.trim()) {
+            alert('期限を入力してください');
+            return;
+        }
+
+        const bulkDeadline = needsDeadline ? new Date(this.incompleteBulkDraft.deadlineInput) : null;
+        const bulkSelection = needsAssignee ? [...this.incompleteBulkDraft.selectionOrder] : null;
+        const actor = this.appService.getProjectAdminId(this.projectId);
+
+        for (const taskId of taskIds) {
+            const task = this.appService.parentTasks.find((p) => p.id === taskId);
+            if (!task) continue;
+            const base = this.buildParentDraft(task);
+            const priority = this.incompleteBulkDraft.isUrgent ? '高' : task.priority;
+            this.appService.saveParentTaskEditBundle(
+                taskId,
+                {
+                    title: base.title,
+                    description: base.description,
+                    deadline: needsDeadline
+                        ? bulkDeadline
+                        : task.deadline && !AppService.deadlineUnset(task.deadline)
+                          ? new Date(task.deadline as Date | string)
+                          : null,
+                    priority,
+                    mentionUserIds: [...base.mentionUserIds],
+                    selectionOrder: needsAssignee ? bulkSelection! : [...base.selectionOrder]
+                },
+                actor
+            );
+        }
+
+        this.incompleteSelectedIds.clear();
+        this.closeIncompleteBulkPanel();
     }
 
     isMemberChecked(uid: string): boolean {
@@ -362,15 +720,24 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     visibleChildRowsForParent(parent: ParentTask): ChildTask[] {
-        const all = this.appService.getChildTasksByParentId(parent.id);
+        const all = this.appService.getWorkViewChildTasksByParentId(parent.id);
         if (all.length < 3) return all;
         if (this.isSubtasksExpanded(parent.id)) return all;
         return all.slice(0, 2);
     }
 
     moreSubtasksHiddenCount(parent: ParentTask): number {
-        const n = this.appService.getChildTasksByParentId(parent.id).length;
+        const n = this.appService.getWorkViewChildTasksByParentId(parent.id).length;
         return n >= 3 ? n - 2 : 0;
+    }
+
+    childAssigneeMember(c: ChildTask): Member | undefined {
+        return c.assigneeId ? this.appService.getMemberById(c.assigneeId) : undefined;
+    }
+
+    revertChildFromComplete(c: ChildTask, ev?: Event): void {
+        ev?.stopPropagation();
+        this.appService.revertChildTaskFromComplete(c.id, this.auditActorUid());
     }
 
     getChildInput(parentId: string): { title: string; assigneeId: string; scheduledDateStr: string } {
@@ -414,8 +781,30 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         const lead = this.selectionOrder[0] ?? null;
         const members = this.selectionOrder.slice(1);
         const addedAsDraft = !!titleTrim && (!deadline || !lead);
-        this.appService.CreateParentTask(this.projectId, this.title, deadline, this.isUrgent, lead, members, this.description, false, null, this.mentionUserIds);
+        const parentIdsBefore = new Set(
+            this.appService.parentTasks.filter((p) => p.projectId === this.projectId).map((p) => p.id)
+        );
+        this.appService.CreateParentTask(
+            this.projectId,
+            this.title,
+            deadline,
+            this.isUrgent,
+            lead,
+            members,
+            this.description,
+            false,
+            null,
+            this.mentionUserIds,
+            this.auditActorUid()
+        );
         if (!titleTrim) return;
+        if (this.globalListCompact) {
+            for (const p of this.appService.parentTasks) {
+                if (p.projectId === this.projectId && !parentIdsBefore.has(p.id)) {
+                    this.exemptFromCompactParentIds.add(p.id);
+                }
+            }
+        }
         this.title = '';
         this.deadlineInput = '';
         this.isUrgent = false;
@@ -440,8 +829,8 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         return this.mentionUserIds.includes(id);
     }
 
-    toggleDraftMention(ctx: 'main' | 'sidebar', id: string, checked: boolean): void {
-        const draft = ctx === 'main' ? this.parentEditDraft : this.sidebarIncompleteDraft;
+    toggleDraftMention(ctx: 'main', id: string, checked: boolean): void {
+        const draft = this.parentEditDraft;
         if (!draft) return;
         if (checked) {
             if (!draft.mentionUserIds.includes(id)) draft.mentionUserIds.push(id);
@@ -462,7 +851,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         }
         const sd = draft.scheduledDateStr?.trim() ? draft.scheduledDateStr : null;
 
-        this.appService.CreateChildTask(this.projectId, parentTask.id, draft.title, draft.assigneeId, false, sd, undefined);
+        this.appService.CreateChildTask(this.projectId, parentTask.id, draft.title, draft.assigneeId, false, sd, this.auditActorUid() ?? undefined);
 
         draft.title = '';
 
@@ -487,7 +876,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     getAssignableMemberIds(parentTask: ParentTask): string[] {
         const ids = parentTask.leadAssigneeId ? [parentTask.leadAssigneeId, ...parentTask.memberIds] : [...parentTask.memberIds];
-        return [...new Set(ids)];
+        return [...new Set(ids)].filter((uid) => !this.appService.isProjectGuest(parentTask.projectId, uid));
     }
 
     getAssignableMembers(parentTask: ParentTask): Member[] {
@@ -623,8 +1012,6 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     enterParentEdit(task: ParentTask, ev?: Event): void {
         ev?.stopPropagation();
         if (this.childEditId) this.cancelChildEdit();
-        this.sidebarIncompleteEditId = null;
-        this.sidebarIncompleteDraft = null;
         this.parentEditTaskId = task.id;
         this.parentEditDraft = this.buildParentDraft(task);
     }
@@ -654,8 +1041,8 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     }
 
-    onDraftMemberChange(ctx: 'main' | 'sidebar', uid: string, checked: boolean): void {
-        const draft = ctx === 'main' ? this.parentEditDraft : this.sidebarIncompleteDraft;
+    onDraftMemberChange(ctx: 'main', uid: string, checked: boolean): void {
+        const draft = this.parentEditDraft;
         if (!draft) return;
         if (checked) {
             if (!draft.selectionOrder.includes(uid)) draft.selectionOrder.push(uid);
@@ -664,24 +1051,28 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         }
     }
 
-    toggleDraftUrgent(ctx: 'main' | 'sidebar'): void {
-        const d = ctx === 'main' ? this.parentEditDraft : this.sidebarIncompleteDraft;
+    toggleDraftUrgent(ctx: 'main'): void {
+        const d = this.parentEditDraft;
         if (!d) return;
         d.isUrgent = !d.isUrgent;
     }
 
     deleteParentTask(taskId: string): void {
-        if (!confirm('この親タスクと紐づく子タスクをすべて削除しますか？')) return;
+        const t = this.appService.parentTasks.find((p) => p.id === taskId);
+        const actor = this.auth.user()?.uid ?? this.appService.getProjectAdminId(this.projectId) ?? null;
+        if (!t || !this.appService.memberCanDeleteParent(t, actor)) return;
+        if (!confirm('この親タスクと紐づく子タスクをすべてゴミ箱に移しますか？')) return;
         if (this.parentEditTaskId === taskId) this.cancelParentEdit();
-        if (this.sidebarIncompleteEditId === taskId) this.cancelSidebarIncompleteEdit();
-        this.appService.deleteParentTask(taskId);
-        if (this.toolbarFilter.pickParentId === taskId) {
-            this.toolbarFilter = { ...this.toolbarFilter, pickParentId: null };
-        }
+        this.incompleteSelectedIds.delete(taskId);
+        this.appService.trashParentTask(taskId, actor);
+        this.toolbarFilter = removeParentIdFromFilter(this.toolbarFilter, taskId);
+        delete this.parentExpandedOverrides[taskId];
+        this.exemptFromCompactParentIds.delete(taskId);
     }
 
     enterChildEdit(c: ChildTask, ev?: Event): void {
         ev?.stopPropagation();
+        if (c.status === '完了') return;
         if (this.parentEditTaskId) this.cancelParentEdit();
         this.childEditId = c.id;
         this.childEditDraft = {
@@ -722,48 +1113,13 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     deleteChildTask(childId: string): void {
-        if (!confirm('この子タスクを削除しますか？')) return;
+        const c = this.appService.childTasks.find((x) => x.id === childId);
+        const parent = c ? this.appService.parentTasks.find((p) => p.id === c.parentTaskId) : undefined;
+        const actor = this.auth.user()?.uid ?? this.appService.getProjectAdminId(this.projectId) ?? null;
+        if (!c || !parent || !this.appService.memberCanDeleteChild(parent, c, actor)) return;
+        if (!confirm('この子タスクをゴミ箱に移しますか？')) return;
         if (this.childEditId === childId) this.cancelChildEdit();
-        this.appService.deleteChildTask(childId);
-    }
-
-    startSidebarIncompleteEdit(task: ParentTask): void {
-        this.parentEditTaskId = null;
-        this.parentEditDraft = null;
-        this.sidebarIncompleteEditId = task.id;
-        this.sidebarIncompleteDraft = this.buildParentDraft(task);
-    }
-
-    cancelSidebarIncompleteEdit(): void {
-        this.sidebarIncompleteEditId = null;
-        this.sidebarIncompleteDraft = null;
-    }
-
-    saveSidebarIncomplete(taskId: string): void {
-        const d = this.sidebarIncompleteDraft;
-        if (!d) return;
-        if (!d.title.trim()) {
-            alert('タイトルを入力してください');
-            return;
-        }
-        this.appService.saveParentTaskEditBundle(taskId, {
-
-            title: d.title,
-
-            description: d.description,
-
-            deadline: d.deadlineInput ? new Date(d.deadlineInput) : null,
-
-            priority: d.isUrgent ? '高' : '通常',
-
-            mentionUserIds: [...d.mentionUserIds],
-
-            selectionOrder: [...d.selectionOrder]
-
-        }, this.appService.getProjectAdminId(this.projectId));
-
-        this.cancelSidebarIncompleteEdit();
-
+        this.appService.trashChildTask(childId, actor);
     }
 
     showAdminDrawerNav(target: AdminDrawerNavTarget): boolean {
@@ -777,6 +1133,26 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
 
     closeRightMenu(): void {
         this.rightMenuOpen = false;
+    }
+
+    openAuditModal(): void {
+        this.closeRightMenu();
+        this.auditModalOpen = true;
+    }
+
+    closeAuditModal(): void {
+        this.auditModalOpen = false;
+    }
+
+    exportTasksCsv(): void {
+        this.closeRightMenu();
+        const csv = buildTasksExportCsv(this.appService, this.projectId);
+        const parents = this.appService.parentTasks.filter((t) => t.projectId === this.projectId);
+        if (!parents.length) {
+            alert('エクスポートするタスクがありません。');
+            return;
+        }
+        downloadCsv(`${csvFilenameBase(this.projectName)}_tasks.csv`, csv);
     }
 
     @HostListener('document:click', ['$event'])
@@ -826,6 +1202,23 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         }
     }
 
+    private buildConsultPendingFallback(entries: ConsultationProjectBundle['entries']): string {
+        return entries
+            .map((e) => {
+                const tasks = e.noChangeOnly
+                    ? '現状変化なし'
+                    : e.parentTaskIds
+                          .map(
+                              (id) =>
+                                  this.appService.parentTasks.find((p) => p.id === id && p.projectId === this.projectId)
+                                      ?.title || id
+                          )
+                          .join('、');
+                return `・${e.memberName}／対象: ${tasks}／相談: ${e.content.replace(/\s+/g, ' ').trim()}`;
+            })
+            .join('\n');
+    }
+
     private getConsultPendingEntries(): ConsultationProjectBundle['entries'] {
         const consultBundle = this.storage.getJson<ConsultationProjectBundle | null>(
             storageKeyConsultationBundle(this.projectId)
@@ -856,8 +1249,9 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
         const taskChangeText = getPendingAdminTaskChangeText(this.storage, this.projectId);
         if (taskChangeText) parts.push(taskChangeText);
 
-        if (this.getConsultPendingEntries().length > 0 && consultSummary) {
-            parts.push(consultSummary);
+        if (consultPending.length > 0) {
+            const summary = consultSummary?.trim();
+            parts.push(summary || this.buildConsultPendingFallback(consultPending));
         }
 
         if (!parts.length) {
@@ -887,7 +1281,7 @@ export class ManageTasksComponent implements OnInit, OnDestroy {
     }
 
     private buildCharacterBubbleText(): string {
-        const members = this.appService.getMembersByProjectId(this.projectId);
+        const members = this.appService.getAssignableMembersByProjectId(this.projectId);
         const focusMemberId =
             (this.aiChat.projectIdOpen() === this.projectId ? this.aiChat.memberIdOpen() : null) ??
             members[0]?.uid ??

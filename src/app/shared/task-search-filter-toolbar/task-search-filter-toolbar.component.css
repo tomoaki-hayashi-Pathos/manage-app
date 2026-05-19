@@ -3,6 +3,20 @@
     width: 100%;
 }
 
+.tsf-section-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.tsf-scope-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
 .tsf-row {
     display: flex;
     align-items: center;
@@ -74,6 +88,49 @@
     background: #f7f7f7;
 }
 
+/* manage-tasks ヘッダー専用（:host で他画面に波及しない） */
+:host(.manage-toolbar-tsf) {
+    position: relative;
+    z-index: 3;
+}
+
+:host(.manage-toolbar-tsf) .tsf-root {
+    width: auto;
+}
+
+:host(.manage-toolbar-tsf) .tsf-row {
+    width: auto;
+    flex-wrap: nowrap;
+}
+
+:host(.manage-toolbar-tsf) .tsf-search {
+    flex: 0 0 auto;
+    width: 8rem;
+    max-width: 8rem;
+    box-sizing: border-box;
+    padding: 0.32rem 0.45rem;
+    font-size: 0.78rem;
+}
+
+:host(.manage-toolbar-tsf) .tsf-actions {
+    position: relative;
+    z-index: 4;
+    gap: 5px;
+}
+
+:host(.manage-toolbar-tsf) .tsf-panel,
+:host(.manage-toolbar-tsf) .tsf-sort-panel {
+    z-index: 50;
+}
+
+:host(.manage-toolbar-tsf) .tsf-filter-btn {
+    min-width: 0;
+    max-width: none;
+    padding: 4px 6px;
+    font-size: 0.74rem;
+    border-radius: 8px;
+}
+
 .tsf-panel {
     position: absolute;
     z-index: 40;
@@ -91,6 +148,13 @@
     gap: 10px;
 }
 
+.tsf-panel--fixed {
+    position: fixed;
+    z-index: 150;
+    top: auto;
+    left: auto;
+}
+
 .tsf-row-toggle {
     display: flex;
     align-items: center;
@@ -103,6 +167,17 @@
 .tsf-section {
     border-top: 1px solid #eee;
     padding-top: 8px;
+}
+
+.tsf-section--first {
+    border-top: none;
+    padding-top: 0;
+}
+
+.tsf-row-toggle--title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tsf-sub-toggle {

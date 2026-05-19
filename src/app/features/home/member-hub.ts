@@ -90,6 +90,6 @@ export class MemberHubComponent implements OnInit {
       void this.router.navigate(['/admin/manage-tasks', this.memberProjectId]);
       return;
     }
-    void this.router.navigate(['/member/today-tasks', this.memberProjectId, mid]);
+    void this.router.navigate(['/member/limit-tasks', this.memberProjectId, mid]);
   }
 }

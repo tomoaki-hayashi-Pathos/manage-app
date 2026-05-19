@@ -26,6 +26,25 @@ export function storageKeyAdminTaskChangeBundle(projectId: string): string {
   return `${STORAGE_PREFIX}adminTaskChangeBundle:v1:${projectId}`;
 }
 
+export function storageKeyLastOpenedProjectByMember(): string {
+  return `${STORAGE_PREFIX}lastOpenedProjectByMember:v1`;
+}
+
+/** memberUid → 参加承認後・未確認のチーム projectId 一覧 */
+export function storageKeyUnseenApprovedTeamByMember(): string {
+  return `${STORAGE_PREFIX}unseenApprovedTeamByMember:v1`;
+}
+
+/** manage-tasks 親一覧の縮小表示（projectId + 責任者 uid） */
+export function storageKeyManageParentListCompact(projectId: string, adminUid: string): string {
+  return `${STORAGE_PREFIX}manageParentListCompact:v1:${projectId}:${adminUid}`;
+}
+
+/** キャラクター動画ドック位置（admin | member × userUid） */
+export function storageKeyCharacterDockPosition(scope: 'admin' | 'member', userUid: string): string {
+  return `${STORAGE_PREFIX}characterDockPos:v1:${scope}:${userUid}`;
+}
+
 interface AiMemberContextState {
   messages: ChatMessage[];
   conversationSummary: string;

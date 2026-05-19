@@ -1,6 +1,14 @@
 <div class="manage-shell not-set-page">
     <main class="main-area main-area--not-set">
-        <header class="project-header card-elevated nst-header">
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="projectId"
+                    [showApproveMembers]="false"
+                    [showMemberEdit]="false"
+                />
+            </div>
+            <header class="project-header card-elevated nst-header">
             <div class="nst-header__left">
                 <h1 class="nst-header__title">期限が設定されてないタスク</h1>
                 <p class="nst-header__sub">{{ projectName || 'プロジェクト' }} · {{ memberDisplayName }}</p>
@@ -19,7 +27,7 @@
                         (filterChange)="toolbarFilter = $event"
                         [members]="users"
                         [candidateParents]="toolbarCandidateParents"
-                        [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                        filterMode="minimal"
                     />
                 </div>
                 <div class="icon-gear-wrap">
@@ -30,6 +38,7 @@
                 </div>
             </div>
         </header>
+        </div>
 
         @if (isSaving) {
             <div class="nst-saving-overlay" aria-live="polite">
@@ -95,6 +104,7 @@
                 [currentNavKey]="'not-set'"
                 (nav)="closeRightMenu()"
             />
+            <app-drawer-logout (nav)="closeRightMenu()" />
         </nav>
     </aside>
 </div>

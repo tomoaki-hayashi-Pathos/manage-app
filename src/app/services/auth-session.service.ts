@@ -20,7 +20,7 @@ export class AuthSessionService {
         this.user.set(u);
         this.loading.set(false);
         if (!u?.email) return;
-        this.app.upsertPendingLoginMember({
+        this.app.syncMemberFromAuth({
           uid: u.uid,
           name: u.displayName || u.email,
           email: u.email,

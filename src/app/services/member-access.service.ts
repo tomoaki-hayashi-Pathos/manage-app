@@ -31,7 +31,21 @@ export class MemberAccessService {
         if (mode === 'personal') {
             return this.ensurePersonalProjectAccess(projectId, memberId);
         }
-        return this.ensureTeamProjectAccess(projectId, memberId);
+        if (!this.ensureTeamProjectAccess(projectId, memberId)) return false;
+        if (mode === 'team' && this.app.isProjectGuest(projectId, memberId)) {
+            return this.ensureGuestTeamMemberRoute(projectId, memberId);
+        }
+        return true;
+    }
+
+    /** ゲストは limit-tasks / completed-tasks の閲覧のみ */
+    private ensureGuestTeamMemberRoute(projectId: string, memberId: string): boolean {
+        const path = this.router.url.split('?')[0];
+        if (path.includes('/member/limit-tasks/') || path.includes('/member/completed-tasks/')) {
+            return true;
+        }
+        void this.router.navigate(['/member/limit-tasks', projectId, memberId]);
+        return false;
     }
 
     /** members から外れたら強制ログアウト（承認待ちは除外） */
@@ -82,7 +96,7 @@ export class MemberAccessService {
 
         if (memberId !== me.uid) {
             window.alert('このページを開く権限がありません。');
-            void this.router.navigate(['/member/hub']);
+            void this.router.navigate(['/landing']);
             return false;
         }
 
@@ -100,7 +114,7 @@ export class MemberAccessService {
 
     private redirectHub(message: string): boolean {
         window.alert(message);
-        void this.router.navigate(['/member/hub']);
+        void this.router.navigate(['/landing']);
         return false;
     }
 

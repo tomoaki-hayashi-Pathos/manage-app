@@ -39,15 +39,14 @@ export class PendingApprovalComponent implements OnInit, OnDestroy {
 
       const emailNorm = email.trim().toLowerCase();
       const m = this.app.getMemberByEmail(email);
-      const stillPending = this.app.pendingLoginMembers.some(
-        (p) => p.email.trim().toLowerCase() === emailNorm
-      );
-      if (!m || stillPending) return;
+      if (!m) {
+        void this.router.navigate(['/landing']);
+        return;
+      }
 
       window.clearInterval(this.pollId!);
       this.pollId = null;
-      if (this.app.isAppOwner(m.uid)) void this.router.navigate(['/owner/menu']);
-      else void this.router.navigate(['/member/hub']);
+      void this.router.navigate(this.app.resolvePostLoginRoute(m.uid));
     }, 50);
   }
 

@@ -1,6 +1,14 @@
 <div class="manage-shell pss-page">
     <main class="main-area">
-        <header class="project-header card-elevated pss-header-bar">
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="personalProjectId()"
+                    [showApproveMembers]="false"
+                    [showMemberEdit]="false"
+                />
+            </div>
+            <header class="project-header card-elevated pss-header-bar">
             <div class="pss-header-bar__left">
                 <h1 class="pss-header-bar__title">進捗サマリー（個人）</h1>
                 <p class="pss-header-bar__sub">個人タスク @if (memberDisplayName()) { · {{ memberDisplayName() }} }</p>
@@ -19,6 +27,7 @@
                 </div>
             </div>
         </header>
+        </div>
 
         <div class="pss-body">
             <div class="pss-stats">
@@ -78,6 +87,7 @@
                 [personalOmitSummaryLink]="true"
                 (nav)="closeRightMenu()"
             />
+            <app-drawer-logout (nav)="closeRightMenu()" />
         </nav>
     </aside>
 </div>

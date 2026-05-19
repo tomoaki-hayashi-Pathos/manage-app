@@ -9,13 +9,16 @@ export class AdminProjectAccessService {
   private readonly auth = inject(AuthSessionService);
   private readonly router = inject(Router);
 
+  /**
+   * @returns true if navigated away (forbidden). false if allowed or still waiting for project list.
+   */
   redirectIfForbidden(projectId: string): boolean {
     if (!this.app.ready() || this.auth.loading()) return false;
-    this.app.notificationTick();
+    const project = this.app.projects.find((p) => p.id === projectId);
+    if (!project) return false;
     const admin = this.app.getMemberByEmail(this.auth.currentEmail());
-    const allowed = !!admin && this.app.getProjectAdminId(projectId) === admin.uid;
-    if (allowed) return false;
-    void this.router.navigate(['/member/hub']);
+    if (admin && project.adminId === admin.uid) return false;
+    void this.router.navigate(['/landing']);
     return true;
   }
 }

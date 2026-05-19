@@ -2,6 +2,7 @@
     <aside class="sidebar card-elevated">
         <div class="sidebar__inner">
             <div #sidebarScroll class="sidebar__scroll">
+            <h2 class="sidebar-section-title">親タスク作成</h2>
             <label class="field-label" for="pt-title">タイトル欄</label>
             <input
                 id="pt-title"
@@ -105,107 +106,142 @@
             <div class="incomplete-block">
                 <div class="incomplete-section-title" role="heading" aria-level="3">設定未完成タスク一覧</div>
                 <div class="incomplete-body">
-                    <div class="incomplete-mode-unified" role="group" aria-label="未入力一覧の表示モード">
-                        <span class="incomplete-mode-unified__label">{{ viewModeLabel }}</span>
-                        <button
-                            type="button"
-                            class="btn-mode-unified-refresh"
-                            (click)="toggleViewMode()"
-                            title="表示を切り替え"
-                            aria-label="表示を切り替え"
-                        >
-                            <span class="icon-refresh" aria-hidden="true">↻</span>
-                        </button>
+                    <div class="incomplete-mode-wrap">
+                    @if (incompleteBulkPanel) {
+                        <div class="incomplete-bulk-panel">
+                            @if (incompleteBulkPanel === 'assignee' || incompleteBulkPanel === 'both') {
+                                <div class="member-checkboxes member-checkboxes--compact">
+                                    @for (user of users; track user.uid) {
+                                        <label class="member-check">
+                                            <input
+                                                type="checkbox"
+                                                [checked]="isIncompleteBulkMemberChecked(user.uid)"
+                                                (change)="onIncompleteBulkMemberChange(user.uid, $any($event.target).checked)"
+                                            />
+                                            <span>{{ user.name }}</span>
+                                        </label>
+                                    }
+                                </div>
+                            }
+                            @if (incompleteBulkPanel === 'deadline' || incompleteBulkPanel === 'both') {
+                                <label class="mini-label">期限</label>
+                                <input
+                                    class="input-pill mini"
+                                    type="datetime-local"
+                                    [(ngModel)]="incompleteBulkDraft.deadlineInput"
+                                    name="incomplete-bulk-deadline"
+                                />
+                            }
+                            <div class="incomplete-bulk-panel__footer">
+                                <button
+                                    type="button"
+                                    class="urgent-lamp urgent-lamp--small"
+                                    [class.urgent-lamp--on]="incompleteBulkDraft.isUrgent"
+                                    (click)="toggleIncompleteBulkUrgent()"
+                                    title="緊急"
+                                    aria-label="緊急"
+                                >
+                                    <svg class="urgent-lamp__svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M4 19h16v2H4v-2z" fill="currentColor" />
+                                        <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9" />
+                                        <path
+                                            d="M10 6c-1.1 0-2 .9-2 2v2"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-opacity="0.5"
+                                        />
+                                    </svg>
+                                </button>
+                                <button type="button" class="btn-mini-save" (click)="applyIncompleteBulk()">決定</button>
+                                <button type="button" class="btn-mini-cancel" (click)="closeIncompleteBulkPanel()">キャンセル</button>
+                            </div>
+                        </div>
+                    }
+                    <div class="incomplete-mode-unified" role="group" aria-label="未設定タスク一覧の表示モード">
+                        <span class="incomplete-mode-unified__label incomplete-mode-unified__label--left">{{ viewModeLabel }}</span>
+                        <div class="incomplete-mode-unified__toolbar">
+                            @if (incompleteShowAssigneeBtn) {
+                                <button type="button" class="btn-incomplete-bulk" (click)="openIncompleteBulkPanel('assignee')">担当</button>
+                            }
+                            @if (incompleteShowDeadlineBtn) {
+                                <button type="button" class="btn-incomplete-bulk" (click)="openIncompleteBulkPanel('deadline')">期限</button>
+                            }
+                            @if (incompleteShowBothBtn) {
+                                <button type="button" class="btn-incomplete-bulk" (click)="openIncompleteBulkPanel('both')">担当と期限</button>
+                            }
+                            <button
+                                type="button"
+                                class="btn-mode-unified-refresh"
+                                (click)="toggleViewMode()"
+                                title="表示を切り替え"
+                                aria-label="表示を切り替え"
+                            >
+                                <span class="icon-refresh" aria-hidden="true">↻</span>
+                            </button>
+                        </div>
+                    </div>
                     </div>
                     <ul class="incomplete-list">
-                            @for (task of filteredIncompleteTasks; track task.id) {
-                                <li class="incomplete-list__item">
-                                    @if (sidebarIncompleteEditId === task.id && sidebarIncompleteDraft; as sd) {
-                                        <div class="incomplete-inline-edit">
-                                            <input class="input-pill mini" [(ngModel)]="sd.title" name="sid-title-{{ task.id }}" placeholder="タイトル" />
-                                            <label class="mini-label">期限</label>
-                                            <input
-                                                class="input-pill mini"
-                                                type="datetime-local"
-                                                [(ngModel)]="sd.deadlineInput"
-                                                name="sid-dl-{{ task.id }}"
-                                            />
-                                            <button type="button" class="urgent-lamp urgent-lamp--small" [class.urgent-lamp--on]="sd.isUrgent" (click)="toggleDraftUrgent('sidebar')">
-                                                <!--<svg class="urgent-lamp__svg" viewBox="0 0 24 24">
-                                                    <path
-                                                        fill="currentColor"
-                                                        d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6A4.997 4.997 0 0 1 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1zM11 19h2v1c0 1.1-.9 2-2 2s-2-.9-2-2v-1h2z"
-                                                    />
-                                                </svg>-->
-                                                <svg class="urgent-lamp__svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <!-- 台座部分 -->
-                                                    <path d="M4 19h16v2H4v-2z" fill="currentColor"/>
-                                                    <!-- ランプ部分：少し不透明度を下げることで、白背景でも形が見えやすくなります -->
-                                                    <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9"/>
-                                                    <!-- 反射部分：あえて「透明な切り抜き」にすることで、背景の赤色を透けさせます -->
-                                                    <path d="M10 6c-1.1 0-2 .9-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5"/>
-                                                </svg>
-                                            </button>
-                                            <div class="member-checkboxes member-checkboxes--compact">
-                                                @for (user of users; track user.uid) {
-                                                    <label class="member-check">
-                                                        <input
-                                                            type="checkbox"
-                                                            [checked]="isMemberCheckedInDraft(sidebarIncompleteDraft, user.uid)"
-                                                            (change)="onDraftMemberChange('sidebar', user.uid, $any($event.target).checked)"
-                                                        />
-                                                        <span>{{ user.name }}</span>
-                                                    </label>
+                        @for (task of filteredIncompleteTasks; track task.id) {
+                            <li class="incomplete-list__item">
+                                <div class="incomplete-list__row">
+                                    <span class="incomplete-list__title">{{ task.title || '（無題）' }}</span>
+                                    @if (incompleteRowShowsAssignees(task)) {
+                                        <div class="incomplete-list__avatars avatar-stack-wrap">
+                                            <div class="avatar-stack avatar-stack--incomplete">
+                                                @for (m of membersOrderedForAvatar(task); track m.uid) {
+                                                    <div
+                                                        class="avatar-stack__chip"
+                                                        [class.avatar-stack__chip--lead]="$first"
+                                                        [title]="m.name"
+                                                    >
+                                                        @if (m.photoURL) {
+                                                            <img [src]="m.photoURL" [alt]="m.name" />
+                                                        } @else {
+                                                            <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                                        }
+                                                        <span class="avatar-stack__name">{{ m.name }}</span>
+                                                    </div>
                                                 }
                                             </div>
-                                            <div class="incomplete-inline-edit__actions">
-                                                <button type="button" class="btn-mini-save" (click)="saveSidebarIncomplete(task.id)">保存</button>
-                                                <button type="button" class="btn-mini-cancel" (click)="cancelSidebarIncompleteEdit()">キャンセル</button>
-                                            </div>
-                                        </div>
-                                    } @else {
-                                        <div class="incomplete-list__row">
-                                            <span class="incomplete-list__title">{{ task.title || '（無題）' }}</span>
-                                            <button type="button" class="btn-mini-edit" (click)="startSidebarIncompleteEdit(task)">期限・担当を設定</button>
-                                            <button
-                                                type="button"
-                                                class="btn-delete"
-                                                (click)="$event.stopPropagation(); deleteParentTask(task.id)"
-                                                title="親タスクを削除"
-                                                aria-label="削除"
-                                            >
-                                                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
-                                            </button>
                                         </div>
                                     }
-                                </li>
-                            } @empty {
-                                <li class="incomplete-list__empty">該当するタスクはありません</li>
-                            }
+                                    @if (incompleteRowShowsDeadline(task)) {
+                                        <span class="incomplete-list__deadline">{{ formatDeadlineCompact(task.deadline) }}</span>
+                                    }
+                                    <label class="incomplete-list__check">
+                                        <input
+                                            type="checkbox"
+                                            [checked]="isIncompleteSelected(task.id)"
+                                            (change)="toggleIncompleteSelection(task.id, $any($event.target).checked)"
+                                            aria-label="一括設定の対象に含める"
+                                        />
+                                    </label>
+                                    <button
+                                        type="button"
+                                        class="btn-delete"
+                                        (click)="$event.stopPropagation(); deleteParentTask(task.id)"
+                                        title="親タスクを削除"
+                                        aria-label="削除"
+                                    >
+                                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"
+                                            ><path
+                                                fill="currentColor"
+                                                d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"
+                                        /></svg>
+                                    </button>
+                                </div>
+                            </li>
+                        } @empty {
+                            <li class="incomplete-list__empty">該当するタスクはありません</li>
+                        }
                     </ul>
                 </div>
             </div>
+
             </div>
 
-            <div class="sidebar__dock">
-            <div class="character-video-dock character-video-dock--sidebar character-video-dock--admin-shift character-video-dock--bubble-above" aria-live="polite">
-                <button type="button" class="character-video-dock__trigger" (click)="openAdminOlChat()" aria-label="AI相談を開く">
-                    <video class="character-video-dock__video" autoplay loop muted playsinline preload="metadata">
-                        <source [src]="characterVideoSrc" type="video/mp4" />
-                    </video>
-                </button>
-                <div
-                    class="character-video-bubble"
-                    [class.character-video-bubble--visible]="characterBubbleVisible"
-                    [class.character-video-bubble--admin-consult]="consultationConfirm"
-                >
-                    <span class="character-video-bubble__body-text">{{ characterBubbleText }}</span>
-                    @if (consultationConfirm) {
-                        <button type="button" class="character-video-bubble__confirm" (click)="confirmConsultationRead()">確認</button>
-                    }
-                </div>
-            </div>
-            </div>
         </div>
     </aside>
 
@@ -219,8 +255,16 @@
                 [suppressProgressStagnationUi]="false"
             />
         }
-        <header class="project-header card-elevated project-header--with-progress">
-            <button type="button" class="btn-progress-check" (click)="requestProgressCheck()">進捗を確認</button>
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="projectId"
+                    [showApproveMembers]="true"
+                    [showMemberEdit]="true"
+                />
+            </div>
+            <header class="project-header card-elevated project-header--with-progress">
+            <button type="button" class="btn-progress-check" (click)="requestProgressCheck()">みんなの状況を聞く</button>
             @if (headerSelfBubbles.length) {
                 <app-member-progress-bubbles
                     class="header-self-identity"
@@ -231,17 +275,29 @@
                     [bubbles]="headerSelfBubbles"
                 />
             }
-            <h1 class="project-header__title">{{ projectName || 'プロジェクト' }}</h1>
-            <div class="project-header__filter project-header__filter--toolbar">
+            <div class="manage-header__titles">
+                <h1 class="project-header__title">{{ projectName || 'プロジェクト' }}</h1>
+                <p class="manage-header__page-label">責任者ページ</p>
+            </div>
+            <div class="project-header__filter project-header__filter--toolbar manage-toolbar-row">
                 <app-task-search-filter-toolbar
+                    class="manage-toolbar-tsf"
                     [filter]="toolbarFilter"
                     (filterChange)="toolbarFilter = $event"
                     [members]="users"
                     [candidateParents]="toolbarCandidateParents"
-                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    filterMode="manage"
                     [showSortMenu]="true"
                     (parentSortPicked)="onParentSortPick($event)"
                 />
+                <button
+                    type="button"
+                    class="manage-density-toggle"
+                    (click)="toggleListDensityMode()"
+                    [attr.aria-pressed]="globalListCompact"
+                >
+                    {{ listDensityToggleLabel() }}
+                </button>
             </div>
             <div class="icon-gear-wrap">
                 @if (gearNotifyTotal > 0) {
@@ -250,11 +306,23 @@
                 <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" aria-expanded="{{ rightMenuOpen }}" aria-label="メニューを開く">⚙</button>
             </div>
         </header>
+        </div>
 
         <div class="parent-list" cdkDropList [cdkDropListDisabled]="!parentListDragEnabled()" (cdkDropListDropped)="onParentDrop($event)">
             <span class="progress-revision-dummy" aria-hidden="true">{{ progress.progressRevision().t }}</span>
             @for (task of visibleParentTasks; track task.id) {
-                <article cdkDrag [ngClass]="'parent-card card-elevated ' + parentDlClass(task)">
+                <article
+                    cdkDrag
+                    [cdkDragDisabled]="!parentListDragEnabled() || !isParentCardExpanded(task.id)"
+                    [ngClass]="
+                        'parent-card card-elevated ' +
+                        parentDlClass(task) +
+                        (isParentCardExpanded(task.id) ? '' : ' parent-card--compact') +
+                        ' ' +
+                        parentCompactBlinkClass(task)
+                    "
+                >
+                    @if (isParentCardExpanded(task.id)) {
                     <div class="parent-card__toolbar">
                         <button type="button" class="btn-delete" (click)="deleteParentTask(task.id)" title="親タスクを削除" aria-label="削除">
                             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
@@ -411,13 +479,35 @@
                                                 <button type="button" class="btn-inline-save btn-inline-save--small" (click)="saveChildEdit(c.id)">保存</button>
                                                 <button type="button" class="btn-inline-cancel btn-inline-cancel--small" (click)="cancelChildEdit()">戻る</button>
                                             </div>
+                                        } @else if (c.status === '完了') {
+                                            <div class="subtask-item subtask-item--done subtask-item--done-compact">
+                                                <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
+                                                <span class="subtask-item__title"
+                                                    >{{ c.title }}
+                                                    @if (formatScheduledShort(c.scheduledDate)) {
+                                                        <span class="subtask-scheduled-chip"> 📅 {{ formatScheduledShort(c.scheduledDate) }}</span>
+                                                    }
+                                                </span>
+                                                @if (childAssigneeMember(c); as m) {
+                                                    <span class="subtask-assignee-icon-only" [title]="m.name">
+                                                        @if (m.photoURL) {
+                                                            <img [src]="m.photoURL" [alt]="m.name" />
+                                                        } @else {
+                                                            <span class="subtask-assignee-icon-only__fallback">{{ initials(m.name) }}</span>
+                                                        }
+                                                    </span>
+                                                }
+                                                <button type="button" class="btn-child-revert" (click)="revertChildFromComplete(c, $event)">未完了に戻す</button>
+                                                <button type="button" class="btn-delete btn-delete--small" (click)="deleteChildTask(c.id)" title="子タスクを削除" aria-label="削除">
+                                                    <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
+                                                </button>
+                                            </div>
                                         } @else {
                                             <div
                                                 class="subtask-item"
                                                 [ngClass]="{
                                                     'subtask-item--todo': c.status === '未着手',
-                                                    'subtask-item--prog': c.status === '進行中',
-                                                    'subtask-item--done': c.status === '完了'
+                                                    'subtask-item--prog': c.status === '進行中'
                                                 }"
                                             >
                                                 <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
@@ -461,12 +551,74 @@
                             </div>
                         </section>
                     </div>
+                    @if (canCollapseParentCard(task.id)) {
+                        <button type="button" class="parent-collapse-toggle" (click)="collapseParentCard(task.id, $event)">
+                            ↑ 縮小する
+                        </button>
+                    }
+                    } @else {
+                    <div class="parent-card__compact">
+                        <div class="parent-card__compact-left">
+                            <span [class]="statusClass(task.status)">{{ task.status }}</span>
+                            @if (task.priority === '高') {
+                                <span class="siren-inline siren-inline--compact" title="緊急">
+                                    <svg class="urgent-lamp__svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M4 19h16v2H4v-2z" fill="currentColor"/>
+                                        <path d="M6 18V9c0-3.3 2.7-6 6-6s6 2.7 6 6v9H6z" fill="currentColor" fill-opacity="0.9"/>
+                                        <path d="M10 6c-1.1 0-2 .9-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5"/>
+                                    </svg>
+                                </span>
+                            }
+                            <span class="parent-card__compact-deadline">{{ formatDeadlineCompact(task.deadline) }}</span>
+                        </div>
+                        <span class="parent-card__compact-title">{{ task.title }}</span>
+                        <div class="parent-card__compact-right">
+                            @if (compactSpeechBubblesForParent(task); as compactBubs) {
+                                @if (compactBubs.length > 0) {
+                                    <div class="parent-card__compact-bubble">
+                                        <app-member-progress-bubbles
+                                            layout="single"
+                                            [showAvatar]="false"
+                                            [showSpeechBubble]="true"
+                                            [bubbles]="compactBubs"
+                                        />
+                                    </div>
+                                }
+                            }
+                            @if (leadMember(task); as m) {
+                                <span class="subtask-assignee-icon-only" [title]="m.name">
+                                    @if (m.photoURL) {
+                                        <img [src]="m.photoURL" [alt]="m.name" />
+                                    } @else {
+                                        <span class="subtask-assignee-icon-only__fallback">{{ initials(m.name) }}</span>
+                                    }
+                                </span>
+                            }
+                            <button type="button" class="parent-expand-btn" (click)="expandParentCard(task.id, $event)">展開</button>
+                        </div>
+                    </div>
+                    }
                 </article>
             } @empty {
                 <p class="empty-main">表示するタスクがありません。絞り込みを「すべて表示」にするか、左のフォームから親タスクを登録してください。</p>
             }
         </div>
     </main>
+
+    <app-character-video-dock
+        dockScope="admin"
+        [userUid]="adminSelfMemberUid"
+        [videoSrc]="characterVideoSrc"
+        [bubbleOpen]="characterDockBubbleOpen"
+        [bubbleText]="characterDockBubbleLine"
+        [showConfirmButton]="consultationConfirm"
+        [underDrawer]="rightMenuOpen"
+        (videoClick)="openAdminOlChat()"
+        (confirmClick)="confirmConsultationRead()"
+        (dockPointerEnter)="onCharacterDockPointerEnter()"
+        (dockPointerLeave)="onCharacterDockPointerLeave()"
+    />
+
 
     @if (rightMenuOpen) {
         <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
@@ -493,10 +645,12 @@
                     完了したタスク
                 </a>
             }
+            <button type="button" class="side-drawer__item" (click)="openAuditModal()">監査ログ</button>
+            <button type="button" class="side-drawer__item" (click)="exportTasksCsv()">タスクCSV</button>
             @if (adminSelfMemberUid) {
-                <a [routerLink]="['/admin/my-tasks', projectId, adminSelfMemberUid, 'today-tasks']" class="side-drawer__item side-drawer__item--back-manage" (click)="closeRightMenu()">責任者用タスク管理ページ</a>
+                <a [routerLink]="['/admin/my-tasks', projectId, adminSelfMemberUid, 'limit-tasks']" class="side-drawer__item side-drawer__item--back-manage" (click)="closeRightMenu()">責任者用タスク管理ページ</a>
             }
-            <a routerLink="/member/hub" class="side-drawer__item side-drawer__item--back-hub" (click)="closeRightMenu()">メンバーページに戻る</a>
+            <app-drawer-logout (nav)="closeRightMenu()" />
         </nav>
     </aside>
 
@@ -540,5 +694,12 @@
             </div>
         </div>
     }
+
+    <app-audit-log-modal
+        [open]="auditModalOpen"
+        [projectId]="projectId"
+        [projectName]="projectName"
+        (closed)="closeAuditModal()"
+    />
 
 </div>

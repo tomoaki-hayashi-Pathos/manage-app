@@ -84,7 +84,7 @@
         <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
         <nav class="side-drawer__nav">
             @if (showAdminDrawerNav('manage')) {
-                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">責任者ページに戻る</a>
             }
             @if (showAdminDrawerNav('ops')) {
                 <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
@@ -105,7 +105,6 @@
                     完了したタスク
                 </a>
             }
-            <a routerLink="/member/hub" class="side-drawer__item" (click)="closeRightMenu()">メンバーページに戻る</a>
         </nav>
     </aside>
 </div>

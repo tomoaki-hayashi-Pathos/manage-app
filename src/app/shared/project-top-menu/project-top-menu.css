@@ -1,0 +1,330 @@
+.ptm-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.25rem 0.35rem;
+    width: 100%;
+    padding-block: 3px;
+    padding-inline: 0.4rem 0.5rem;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.ptm-bar__btn {
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: #d0d4d9;
+    color: #1a1a1a;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.ptm-bar__btn:not(.ptm-bar__btn--icon) {
+    flex: 1 1 auto;
+    flex-shrink: 0;
+    min-width: max-content;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.ptm-bar__btn:hover {
+    background: #c4c9ce;
+}
+
+.ptm-bar__btn-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    flex-shrink: 0;
+    min-width: max-content;
+    display: flex;
+}
+
+.ptm-bar__btn-wrap > .ptm-bar__btn {
+    width: auto;
+}
+
+.ptm-bar__notify-badge {
+    position: absolute;
+    left: -2px;
+    bottom: -2px;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #e53935;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.ptm-bar__btn--icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: unset;
+    padding: 0.3rem 0.42rem;
+    overflow: visible;
+}
+
+.ptm-bar__icon-svg {
+    display: block;
+    flex-shrink: 0;
+}
+
+.ptm-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.ptm-modal {
+    position: fixed;
+    z-index: 1001;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(92vw, 26rem);
+    padding: 1.15rem 1.25rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    border-radius: 20px;
+}
+
+.ptm-modal--rich {
+    background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+}
+
+.ptm-modal--success .ptm-modal__title {
+    color: #2e7d32;
+}
+
+.ptm-modal__title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+.ptm-modal__lead {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: #555;
+}
+
+.ptm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.ptm-field__label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #444;
+}
+
+.ptm-modal .input-pill {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #f1f3f5;
+    border-radius: 14px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: #1a1a1a;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.ptm-modal textarea.input-pill {
+    resize: vertical;
+    min-height: 3.5rem;
+}
+
+.ptm-modal select.input-pill {
+    cursor: pointer;
+}
+
+.ptm-code-input {
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 800;
+    text-align: center;
+}
+
+.ptm-invite-box--guest {
+    margin-top: 12px;
+}
+
+.ptm-invite-box {
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+}
+
+.ptm-invite-box__label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 0.35rem;
+}
+
+.ptm-invite-box__row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ptm-invite-box__code {
+    flex: 1;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    padding: 0.35rem 0.5rem;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px dashed #66bb6a;
+}
+
+.ptm-invite-box__hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.72rem;
+    color: #555;
+}
+
+.ptm-invite-box__hint--ok {
+    color: #2e7d32;
+    font-weight: 700;
+}
+
+.ptm-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.15rem;
+}
+
+.ptm-modal .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.2;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.ptm-modal .btn.btn--compact {
+    min-height: 0;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+}
+
+.ptm-modal .btn:not(.btn--primary):not(.btn-danger) {
+    background: #d0d4d9;
+    color: #1a1a1a;
+}
+
+.ptm-modal .btn:not(.btn--primary):not(.btn-danger):hover {
+    background: #c4c9ce;
+}
+
+.ptm-modal .btn--primary {
+    border: none;
+    color: #fff;
+    background: linear-gradient(180deg, #ff4a4a 0%, #e53935 100%);
+}
+
+.ptm-modal .btn--primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
+.ptm-modal .btn--primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.ptm-modal .btn-danger {
+    border: none;
+    color: #fff;
+    background: #c62828;
+}
+
+.ptm-modal .btn-danger:hover {
+    background: #b71c1c;
+}
+
+.ptm-approve-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 14rem;
+    overflow: auto;
+}
+
+.ptm-approve-list__item {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ptm-approve-list__item label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.ptm-member-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 14rem;
+    overflow: auto;
+}
+
+.ptm-member-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ptm-badge {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}

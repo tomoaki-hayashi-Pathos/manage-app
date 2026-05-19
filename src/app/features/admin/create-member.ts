@@ -32,7 +32,7 @@ export class CreateMemberComponent implements OnInit {
                 void this.router.navigate(['/pending-approval']);
                 return;
             }
-            if (!this.appService.isAppOwner(me.uid)) void this.router.navigate(['/member/hub']);
+            if (!this.appService.isAppOwner(me.uid)) void this.router.navigate(['/landing']);
         }, 50);
     }
 

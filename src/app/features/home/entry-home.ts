@@ -27,11 +27,10 @@ export class EntryHomeComponent implements OnInit {
       window.clearInterval(id);
       const m = this.app.getMemberByEmail(email);
       if (!m) {
-        void this.router.navigate(['/pending-approval']);
+        void this.router.navigate(['/landing']);
         return;
       }
-      if (this.app.isAppOwner(m.uid)) void this.router.navigate(['/owner/menu']);
-      else void this.router.navigate(['/member/hub']);
+      void this.router.navigate(this.app.resolvePostLoginRoute(m.uid));
     }, 50);
   }
 

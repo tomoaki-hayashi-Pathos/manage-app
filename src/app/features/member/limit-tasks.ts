@@ -21,12 +21,22 @@ import { MemberAccessService } from '../../services/member-access.service';
 import { ProgressMemberShellComponent } from '../../shared/progress-member-shell/progress-member-shell.component';
 import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
 import { ParentTeamProgressStripComponent } from '../../shared/parent-team-progress-strip/parent-team-progress-strip.component';
-import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
 import {
+    TaskSearchFilterToolbarComponent,
+    type TaskListScopeMode
+} from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import { memberIsInvolvedInParent } from '../../core/project-permissions.util';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
+import { CharacterVideoDockComponent } from '../../shared/character-video-dock/character-video-dock.component';
+import { showProjectTopMemberEdit } from '../../shared/project-top-menu/project-top-menu.util';
+import {
+    canReorderList,
     defaultToolbarFilterState,
-    isToolbarFilterDefault,
     parentMatchesToolbarFilters,
-    type TaskToolbarFilterState
+    removeParentIdFromFilter,
+    type TaskToolbarFilterState,
+    type ToolbarFilterContext
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 
 type ParentEditDraft = {
@@ -51,7 +61,10 @@ type ChildEditDraft = { title: string; assigneeId: string; scheduledDateStr: str
         ProgressMemberShellComponent,
         MemberProgressBubblesComponent,
         ParentTeamProgressStripComponent,
-        TaskSearchFilterToolbarComponent
+        TaskSearchFilterToolbarComponent,
+        ProjectTopMenuComponent,
+        DrawerLogoutComponent,
+        CharacterVideoDockComponent
     ],
     templateUrl: './limit-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', '../../progress-ai.css']
@@ -96,6 +109,10 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
         return false;
     }
 
+    hideStagnationInToolbar(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
     showMyTaskMentionToolbar(): boolean {
         return this.ctx.mode !== 'personal';
     }
@@ -105,17 +122,40 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
     }
 
     get projectName(): string {
-        if (this.ctx.mode === 'personal') return '個人タスク';
+        if (this.ctx.mode === 'personal') {
+            return this.appService.getProjectDisplayName(this.projectId);
+        }
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
     get limitPageMainTitle(): string {
-        return this.ctx.mode === 'personal' ? 'MYタスク一覧' : '担当するタスク一覧';
+        return this.ctx.mode === 'personal' ? '自分用ToDo一覧' : '担当するタスク一覧';
+    }
+
+    get characterDockBubbleOpen(): boolean {
+        return this.characterBubbleVisible || this.characterHoverHint;
+    }
+
+    get characterDockBubbleLine(): string {
+        if (this.characterBubbleVisible) return this.characterBubbleText;
+        if (this.characterHoverHint) return LimitTasksComponent.CHARACTER_HOVER_HINT;
+        return '';
+    }
+
+    onCharacterDockPointerEnter(): void {
+        if (this.characterBubbleVisible) return;
+        this.characterHoverHint = true;
+    }
+
+    onCharacterDockPointerLeave(): void {
+        this.characterHoverHint = false;
     }
 
     readonly characterVideoSrc = 'assets/character-typing.mp4';
+    private static readonly CHARACTER_HOVER_HINT = '話し聞くよ？';
     characterBubbleVisible = false;
     characterBubbleText = '';
+    characterHoverHint = false;
     memberTaskChangeConfirm = false;
     private characterShowTimerId: number | null = null;
     private characterHideTimerId: number | null = null;
@@ -132,6 +172,8 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
     readonly TOK_ADMIN = MENTION_ADMIN;
 
     toolbarFilter: TaskToolbarFilterState = defaultToolbarFilterState();
+    /** チーム limit-tasks: デフォルトは関与のみ（訪問ごとにリセット） */
+    taskListScope: TaskListScopeMode = 'involved';
     viewMode = 0;
     incompleteSectionOpen = false;
 
@@ -142,6 +184,7 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         if (!this.ctx.ensureMemberAccess(this.memberAccess)) return;
+        this.taskListScope = this.isTeamGuestViewer() ? 'all' : 'involved';
         this.appService.setMemberCurrentNavPage(this.projectId, this.memberId, 'limit');
         this.appService.clearMemberPageNotifications(this.projectId, this.memberId, 'limit');
         this.progress.ensureProgressRoundForProject(this.projectId);
@@ -202,12 +245,35 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
         return this.progress.bubblesForMemberHeaderDisplay(this.projectId, this.memberId);
     }
 
+    isTeamGuestViewer(): boolean {
+        return this.ctx.mode === 'team' && this.appService.isProjectGuest(this.projectId, this.memberId);
+    }
+
+    showTaskListScopeFilter(): boolean {
+        return this.ctx.mode === 'team' && !this.isTeamGuestViewer();
+    }
+
+    onTaskListScopeChange(scope: TaskListScopeMode): void {
+        this.taskListScope = scope;
+    }
+
     /** このメンバーが関与する親タスクのみ */
     isTaskVisibleToMember(t: ParentTask): boolean {
         if (this.appService.isPrivateMyHiddenFromOtherMember(t, this.memberId)) return false;
-        if (t.leadAssigneeId === this.memberId) return true;
-        if (t.memberIds.includes(this.memberId)) return true;
-        return this.appService.getChildTasksByParentId(t.id).some((c) => c.assigneeId === this.memberId);
+        const childIds = this.appService.getChildTasksByParentId(t.id).map((c) => c.assigneeId);
+        return memberIsInvolvedInParent(t, this.memberId, childIds);
+    }
+
+    /** 一覧上で編集・操作できるか（ゲスト／非関与は閲覧のみ） */
+    canEditTaskOnPage(task: ParentTask): boolean {
+        if (this.isTeamGuestViewer()) return false;
+        if (this.ctx.mode === 'personal' || this.ctx.mode === 'adminSelf') return true;
+        if (this.taskListScope === 'all' && !this.isTaskVisibleToMember(task)) return false;
+        return true;
+    }
+
+    isParentReadOnlyOnPage(task: ParentTask): boolean {
+        return !this.canEditTaskOnPage(task);
     }
 
     /** MY = 作成者(createdById)のみ */
@@ -216,30 +282,44 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
     }
 
     get baseVisibleParentTasks(): ParentTask[] {
-        return this.appService
-            .getSortedParentTasksForProject(this.projectId, false)
-            .filter((t) => this.isTaskVisibleToMember(t));
+        const sorted = this.appService.getActiveSortedParentTasksForProject(this.projectId);
+        if (this.ctx.mode === 'team' && (this.taskListScope === 'all' || this.isTeamGuestViewer())) {
+            return sorted.filter((t) => !this.appService.isPrivateMyHiddenFromOtherMember(t, this.memberId));
+        }
+        return sorted.filter((t) => this.isTaskVisibleToMember(t));
     }
 
     get visibleParentTasks(): ParentTask[] {
-        return this.baseVisibleParentTasks.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
+        return this.baseVisibleParentTasks.filter((t) =>
+            parentMatchesToolbarFilters(this.toolbarFilterCtx(), t, this.toolbarFilter, 'member')
+        );
     }
 
     get toolbarCandidateParents(): ParentTask[] {
         return this.baseVisibleParentTasks;
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return this.ctx.mode === 'personal';
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: (parentTaskId, childTaskId) =>
+                this.progress.hasOpenStagnationForTask(this.projectId, parentTaskId, childTaskId)
+        };
     }
 
     /** 個人ワークスペースのみ: 進捗アイコン・吹き出し・担当UIを非表示 */
+    get showProjectTopMemberEdit(): boolean {
+        return showProjectTopMemberEdit(this.appService, this.ctx.mode, this.projectId, this.memberId);
+    }
+
     hideTeamTaskChrome(): boolean {
         return this.ctx.mode === 'personal';
     }
 
     parentListDragEnabled(): boolean {
-        return isToolbarFilterDefault(this.toolbarFilter);
+        if (this.taskListScope === 'all') return false;
+        return canReorderList(this.toolbarFilter);
     }
 
     onParentSortPick(kind: 'deadline' | 'status'): void {
@@ -290,15 +370,25 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
     }
 
     visibleChildRowsForParent(parent: ParentTask): ChildTask[] {
-        const all = this.appService.getChildTasksByParentId(parent.id);
+        const all = this.appService.getWorkViewChildTasksByParentId(parent.id);
         if (all.length < 3) return all;
         if (this.isSubtasksExpanded(parent.id)) return all;
         return all.slice(0, 2);
     }
 
     moreSubtasksHiddenCount(parent: ParentTask): number {
-        const n = this.appService.getChildTasksByParentId(parent.id).length;
+        const n = this.appService.getWorkViewChildTasksByParentId(parent.id).length;
         return n >= 3 ? n - 2 : 0;
+    }
+
+    childAssigneeMember(c: ChildTask): Member | undefined {
+        return c.assigneeId ? this.appService.getMemberById(c.assigneeId) : undefined;
+    }
+
+    revertChildFromComplete(c: ChildTask, ev?: Event): void {
+        ev?.stopPropagation();
+        if (this.isTeamGuestViewer()) return;
+        this.appService.revertChildTaskFromComplete(c.id, this.memberId);
     }
 
     getChildInput(parentId: string): {
@@ -566,6 +656,7 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
 
     enterParentEdit(task: ParentTask, ev?: Event): void {
         ev?.stopPropagation();
+        if (this.isParentReadOnlyOnPage(task)) return;
         if (this.childEditId) this.cancelChildEdit();
         this.sidebarIncompleteEditId = null;
         this.sidebarIncompleteDraft = null;
@@ -632,17 +723,18 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
 
     deleteParentTask(taskId: string): void {
         const t = this.appService.parentTasks.find((p) => p.id === taskId);
-        if (!t || !this.isMyTask(t)) return;
-        if (!confirm('この親タスクと紐づく子タスクをすべて削除しますか？')) return;
+        if (!t || !this.appService.memberCanDeleteParent(t, this.memberId)) return;
+        if (!confirm('この親タスクと紐づく子タスクをすべてゴミ箱に移しますか？')) return;
         if (this.parentEditTaskId === taskId) this.cancelParentEdit();
-        this.appService.deleteParentTask(taskId);
-        if (this.toolbarFilter.pickParentId === taskId) {
-            this.toolbarFilter = { ...this.toolbarFilter, pickParentId: null };
-        }
+        this.appService.trashParentTask(taskId, this.memberId);
+        this.toolbarFilter = removeParentIdFromFilter(this.toolbarFilter, taskId);
     }
 
     enterChildEdit(c: ChildTask, ev?: Event): void {
         ev?.stopPropagation();
+        if (c.status === '完了') return;
+        const parent = this.appService.parentTasks.find((p) => p.id === c.parentTaskId);
+        if (!parent || this.isParentReadOnlyOnPage(parent)) return;
         if (this.parentEditTaskId) this.cancelParentEdit();
         this.childEditId = c.id;
         this.childEditDraft = {
@@ -688,9 +780,12 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
     }
 
     deleteChildTask(childId: string): void {
-        if (!confirm('この子タスクを削除しますか？')) return;
+        const c = this.appService.childTasks.find((x) => x.id === childId);
+        const parent = c ? this.appService.parentTasks.find((p) => p.id === c.parentTaskId) : undefined;
+        if (!c || !parent || !this.appService.memberCanDeleteChild(parent, c, this.memberId)) return;
+        if (!confirm('この子タスクをゴミ箱に移しますか？')) return;
         if (this.childEditId === childId) this.cancelChildEdit();
-        this.appService.deleteChildTask(childId);
+        this.appService.trashChildTask(childId, this.memberId);
     }
 
     toggleParentToday(task: ParentTask, ev: MouseEvent): void {
@@ -734,6 +829,11 @@ export class LimitTasksComponent implements OnInit, OnDestroy {
             case '完了':
                 return '完了！';
         }
+    }
+
+    /** 子タスクが無いときのみ親のステータス操作ボタンを表示 */
+    showParentStatusButton(parent: ParentTask): boolean {
+        return this.appService.getChildTasksByParentId(parent.id).length === 0;
     }
 
     cycleParentFromCard(task: ParentTask, ev: Event): void {

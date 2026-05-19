@@ -1,0 +1,161 @@
+﻿<div class="manage-shell completed-tasks-page trash-tasks-page">
+    <main class="main-area ct-main">
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="projectId"
+                    [showApproveMembers]="isAdminView"
+                    [showMemberEdit]="isAdminView"
+                />
+            </div>
+            <header class="project-header card-elevated ct-header">
+                <div class="ct-header__titles">
+                    <h1 class="project-header__title ct-header__title">ゴミ箱</h1>
+                    <p class="ct-header__sub">
+                        {{ projectName || 'プロジェクト' }}
+                        @if (memberId) {
+                            <span> · {{ memberDisplayName }}</span>
+                        }
+                        <span class="trash-hint"> · 削除から7日間保管</span>
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    class="ct-btn-revert"
+                    [disabled]="selectedRestorableIds.length === 0"
+                    (click)="restoreSelected()"
+                    title="選択を復元"
+                >
+                    <span class="ct-btn-revert__icon" aria-hidden="true">↩</span>
+                    選択を復元
+                </button>
+                <div class="project-header__filter project-header__filter--toolbar">
+                    <app-task-search-filter-toolbar
+                        [filter]="toolbarFilter"
+                        (filterChange)="toolbarFilter = $event"
+                        [members]="users"
+                        [candidateParents]="toolbarCandidateParents"
+                        [filterMode]="toolbarFilterMode()"
+                    />
+                </div>
+                @if (trashedList.length > 0) {
+                    <button type="button" class="ct-header-delete" (click)="purgeAll()" title="ゴミ箱を空にする" aria-label="ゴミ箱を空にする">
+                        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                            <path
+                                fill="currentColor"
+                                d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"
+                            />
+                        </svg>
+                    </button>
+                }
+                <div class="icon-gear-wrap">
+                    @if (gearNotifyTotal > 0) {
+                        <span class="gear-notify-badge">{{ gearNotifyTotal }}</span>
+                    }
+                    <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">⚙</button>
+                </div>
+            </header>
+        </div>
+
+        @if (trashedList.length === 0) {
+            <div class="ct-empty card-elevated">
+                <p class="ct-empty__msg">ゴミ箱は空です。</p>
+            </div>
+        } @else if (visibleTrashed.length === 0) {
+            <div class="ct-empty card-elevated">
+                <p class="ct-empty__msg">条件に一致するタスクはありません。</p>
+            </div>
+        } @else {
+            <div class="ct-list">
+                @for (entry of visibleTrashed; track entry.id) {
+                    <article class="ct-card card-elevated" [class.trash-card--locked]="!canActOn(entry)">
+                        <label class="ct-check-wrap">
+                            <input
+                                type="checkbox"
+                                [checked]="isSelected(entry.id)"
+                                [disabled]="!canActOn(entry)"
+                                (change)="toggleSelect(entry.id, $any($event.target).checked)"
+                            />
+                        </label>
+                        <div class="ct-card__body">
+                            <div class="ct-card__left">
+                                <p class="ct-dl">{{ formatDeadline(entry.parent.deadline) }}</p>
+                                <div class="ct-title-pill">{{ entryLabel(entry) }}</div>
+                                <p class="trash-meta">
+                                    <span [class]="statusClass(entryStatusLabel(entry))">{{ entryStatusLabel(entry) }}</span>
+                                    @if (entry.childOnly) {
+                                        <span class="trash-tag">子タスク</span>
+                                    }
+                                </p>
+                            </div>
+                            <div class="ct-card__right">
+                                <p class="ct-done-at">{{ formatDeletedAt(entry) }}</p>
+                                @if (!hideTeamTaskChrome()) {
+                                    <div class="avatar-stack-wrap ct-assignees">
+                                        <span class="avatar-stack-label">担当・メンバー</span>
+                                        <div class="avatar-stack">
+                                            @for (m of membersOrderedForAvatar(entry); track m.uid) {
+                                                <div class="avatar-stack__chip" [title]="m.name">
+                                                    @if (m.photoURL) {
+                                                        <img [src]="m.photoURL" [alt]="m.name" />
+                                                    } @else {
+                                                        <span class="avatar-stack__fallback">{{ initials(m.name) }}</span>
+                                                    }
+                                                    <span class="avatar-stack__name">{{ m.name }}</span>
+                                                </div>
+                                            } @empty {
+                                                <span class="hint">—</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </main>
+
+    @if (rightMenuOpen) {
+        <div class="overlay-backdrop" (click)="closeRightMenu()" aria-hidden="true"></div>
+    }
+    <aside class="side-drawer" [class.side-drawer--open]="rightMenuOpen">
+        <button type="button" class="side-drawer__close" (click)="closeRightMenu()" aria-label="閉じる">×</button>
+        <nav class="side-drawer__nav side-drawer__nav--member">
+            @if (memberId) {
+                <app-member-nav-links
+                    [projectId]="projectId"
+                    [memberId]="memberId!"
+                    [navMode]="navLinkMode()"
+                    [currentNavKey]="null"
+                    (nav)="closeRightMenu()"
+                />
+            } @else {
+                @if (showAdminDrawerNav('manage')) {
+                    <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">責任者ページに戻る</a>
+                }
+                @if (showAdminDrawerNav('ops')) {
+                    <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
+                }
+                @if (showAdminDrawerNav('shared')) {
+                    <a [routerLink]="['/admin/shared-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('shared') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('shared') }}</span>
+                        }
+                        共有するタスク
+                    </a>
+                }
+                @if (showAdminDrawerNav('completed')) {
+                    <a [routerLink]="['/admin/completed-tasks', projectId]" class="side-drawer__item side-drawer__item--with-badge" (click)="closeRightMenu()">
+                        @if (adminNavBadge('completed') > 0) {
+                            <span class="nav-notify-badge">{{ adminNavBadge('completed') }}</span>
+                        }
+                        完了したタスク
+                    </a>
+                }
+            }
+            <app-drawer-logout (nav)="closeRightMenu()" />
+        </nav>
+    </aside>
+</div>

@@ -13,8 +13,28 @@ export interface Project {
     memberIds: string[],
 
     /** 個人専用（責任者のみ参加） */
-    isPersonal?: boolean
+    isPersonal?: boolean,
 
+    /** プロジェクト説明（作成時・編集時） */
+    description?: string
+
+    /** 閲覧のみ参加用の参加コード（6桁・メンバー用コードとは別） */
+    guestInviteCode?: string
+
+    /** memberIds の uid ごとの役割。未設定は member */
+    memberRoles?: Record<string, 'member' | 'guest'>
+
+}
+
+/** 参加コード経由のプロジェクト参加申請（チームのみ） */
+export interface PendingProjectJoin {
+    projectId: string;
+    uid: string;
+    email: string;
+    name: string;
+    requestedAt: number;
+    /** 申請時に使ったコード種別（承認時の memberRoles 決定用） */
+    joinRole?: 'member' | 'guest';
 }
 
 
@@ -126,6 +146,30 @@ export interface ChildTask {
 }
 
 
+
+/** ゴミ箱に入った親タスク（子のみ削除の場合は childOnly） */
+export interface TrashedTaskEntry {
+    id: string;
+    projectId: string;
+    parent: ParentTask;
+    children: ChildTask[];
+    deletedAt: number;
+    deletedByUid: string | null;
+    /** true のとき親は作業一覧に残り、子だけ削除された状態 */
+    childOnly?: boolean;
+}
+
+/** 責任者向け監査ログ（append-only・90日保持） */
+export interface AuditLogEntry {
+    id: string;
+    at: number;
+    projectId: string;
+    actorUid: string | null;
+    actorName: string;
+    action: string;
+    title: string;
+    summary: string;
+}
 
 /** 明示的な親／子ステータス変更のログ（AI コンテキスト・履歴表示用） */
 export interface TaskStatusChangeLogEntry {

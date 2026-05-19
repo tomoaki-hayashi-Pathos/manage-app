@@ -26,8 +26,12 @@
             @if (showAvatar && b.memberId) {
                 <div class="member-progress-dock__avatar-row">
                     <span class="member-progress-dock__avatar" [title]="b.memberName">
-                        @if (b.memberPhotoUrl) {
-                            <img [src]="b.memberPhotoUrl" [alt]="b.memberName" />
+                        @if (showMemberPhoto(b)) {
+                            <img
+                                [src]="b.memberPhotoUrl"
+                                [alt]="b.memberName"
+                                (error)="onMemberPhotoError(b.bubbleKey)"
+                            />
                         } @else {
                             <span class="member-progress-dock__fallback">{{ initials(b.memberName) }}</span>
                         }

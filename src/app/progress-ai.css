@@ -667,6 +667,43 @@
     transform: rotate(45deg);
 }
 
+/* 右下固定（管理・メンバー画面）320×240 素材向け 4:3 */
+.character-video-dock--fixed-br {
+    position: fixed;
+    right: max(0.5rem, env(safe-area-inset-right));
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    width: 3cm;
+    margin-top: 0;
+    z-index: 120;
+}
+
+.character-video-dock--fixed-br.character-video-dock--under-drawer {
+    z-index: 50;
+}
+
+.character-video-dock--fixed-br .character-video-dock__trigger {
+    width: 3cm;
+}
+
+.character-video-dock--fixed-br .character-video-dock__video {
+    width: 3cm;
+    height: 2.25cm;
+    object-fit: contain;
+}
+
+.character-video-dock--fixed-br.character-video-dock--bubble-above .character-video-bubble {
+    left: auto;
+    right: 0;
+    width: min(260px, calc(100vw - max(0.5rem, env(safe-area-inset-right)) - 1rem));
+    max-width: min(260px, calc(100vw - 1rem));
+    box-sizing: border-box;
+    transform: translateY(-10px) scale(0.97);
+}
+
+.character-video-dock--fixed-br.character-video-dock--bubble-above .character-video-bubble--visible {
+    transform: translateY(0) scale(1);
+}
+
 @media (max-width: 640px) {
     .character-video-dock {
         width: 100%;
@@ -686,6 +723,11 @@
     .character-video-dock--bubble-above .character-video-bubble {
         left: 0;
         width: 100%;
+        font-size: 0.68rem;
+    }
+
+    .character-video-dock--fixed-br.character-video-dock--bubble-above .character-video-bubble {
+        width: min(190px, calc(100vw - max(0.5rem, env(safe-area-inset-right)) - 1rem));
         font-size: 0.68rem;
     }
 }

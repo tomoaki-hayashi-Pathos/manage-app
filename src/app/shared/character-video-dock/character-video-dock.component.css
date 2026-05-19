@@ -1,0 +1,173 @@
+/* ドック本体（親の progress-ai.css は子テンプレートに届かないため :host で再定義） */
+:host {
+    position: relative;
+    width: 3cm;
+    pointer-events: auto;
+    overflow: visible;
+}
+
+:host.character-video-dock--fixed-br {
+    position: fixed;
+    right: max(0.5rem, env(safe-area-inset-right));
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    width: 3cm;
+    margin-top: 0;
+    z-index: 120;
+}
+
+:host.character-video-dock--fixed-br.character-video-dock--under-drawer {
+    z-index: 50;
+}
+
+:host.character-video-dock--draggable.character-video-dock--custom-pos {
+    right: auto;
+    bottom: auto;
+}
+
+:host.character-video-dock--draggable {
+    cursor: grab;
+    touch-action: none;
+}
+
+:host.character-video-dock--draggable.character-video-dock--dragging {
+    cursor: grabbing;
+}
+
+:host .character-video-dock__media {
+    display: block;
+    width: 3cm;
+    border-radius: 12px;
+    cursor: grab;
+    touch-action: none;
+}
+
+:host .character-video-dock__video {
+    display: block;
+    width: 3cm;
+    height: 2.25cm;
+    object-fit: contain;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+:host .character-video-dock__chat-btn {
+    display: block;
+    width: 100%;
+    height: 6mm;
+    min-height: 6mm;
+    margin: 0.45mm 0 0;
+    padding: 0 1.2mm;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 158, 181, 0.65);
+    border-radius: 999px;
+    background: linear-gradient(180deg, #fffafc 0%, #ffe8f0 48%, #ffd6e4 100%);
+    color: #b03d62;
+    font-size: 2.15mm;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow:
+        0 1.5px 6px rgba(220, 110, 145, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    transition:
+        transform 0.16s ease,
+        box-shadow 0.16s ease,
+        background 0.16s ease,
+        border-color 0.16s ease;
+}
+
+:host .character-video-dock__chat-btn:hover {
+    background: linear-gradient(180deg, #fff 0%, #ffedf3 55%, #ffc9dc 100%);
+    border-color: rgba(255, 130, 165, 0.85);
+    box-shadow:
+        0 2.5px 9px rgba(220, 100, 140, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+    transform: translateY(-0.25px);
+}
+
+:host .character-video-dock__chat-btn:active {
+    transform: translateY(0.5px) scale(0.99);
+    box-shadow:
+        0 1px 3px rgba(200, 90, 125, 0.22),
+        inset 0 1px 2px rgba(210, 90, 130, 0.12);
+}
+
+:host .character-video-bubble {
+    position: absolute;
+    left: auto;
+    right: 0;
+    top: auto;
+    bottom: calc(100% + 0.55rem);
+    width: min(260px, calc(100vw - max(0.5rem, env(safe-area-inset-right)) - 1rem));
+    max-width: min(260px, calc(100vw - 1rem));
+    box-sizing: border-box;
+    padding: 0.52rem 0.62rem;
+    border-radius: 12px;
+    border: 1px solid rgba(35, 35, 35, 0.88);
+    background:
+        radial-gradient(circle at 16% 18%, #fff 0%, #fff 62%, rgba(249, 249, 249, 0.97) 100%);
+    color: #111;
+    font-size: 0.73rem;
+    font-weight: 700;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    white-space: pre-wrap;
+    box-shadow:
+        0 7px 20px rgba(0, 0, 0, 0.2),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+    transition:
+        opacity 0.38s ease,
+        transform 0.38s ease;
+    z-index: 120;
+    pointer-events: none;
+}
+
+:host .character-video-bubble--visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    cursor: grab;
+}
+
+:host .character-video-bubble--visible.character-video-bubble--admin-consult {
+    cursor: grab;
+}
+
+:host.character-video-dock--dragging .character-video-bubble--visible {
+    cursor: grabbing;
+}
+
+:host .character-video-bubble::before {
+    content: '';
+    position: absolute;
+    top: auto;
+    right: auto;
+    left: 50%;
+    bottom: -7px;
+    margin-left: -7px;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-right: 1px solid rgba(35, 35, 35, 0.88);
+    border-bottom: 1px solid rgba(35, 35, 35, 0.88);
+    transform: rotate(45deg);
+    box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.07);
+}
+
+:host .character-video-bubble__confirm {
+    cursor: pointer;
+}
+
+@media (max-width: 640px) {
+    :host .character-video-bubble {
+        width: min(190px, calc(100vw - max(0.5rem, env(safe-area-inset-right)) - 1rem));
+        font-size: 0.68rem;
+    }
+}

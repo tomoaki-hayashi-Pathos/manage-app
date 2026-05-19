@@ -39,8 +39,7 @@ export class AdminMenuComponent implements OnInit {
         void this.router.navigate(['/pending-approval']);
         return;
       }
-      if (this.app.isAppOwner(m.uid)) void this.router.navigate(['/owner/menu']);
-      else void this.router.navigate(['/member/hub']);
+      void this.router.navigate(this.app.resolvePostLoginRoute(m.uid));
     }, 50);
   }
 }

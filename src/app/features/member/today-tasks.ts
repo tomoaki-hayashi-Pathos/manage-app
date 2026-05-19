@@ -22,11 +22,17 @@ import { ProgressMemberShellComponent } from '../../shared/progress-member-shell
 import { MemberProgressBubblesComponent } from '../../shared/member-progress-bubbles/member-progress-bubbles.component';
 import { ParentTeamProgressStripComponent } from '../../shared/parent-team-progress-strip/parent-team-progress-strip.component';
 import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
+import { CharacterVideoDockComponent } from '../../shared/character-video-dock/character-video-dock.component';
+import { showProjectTopMemberEdit } from '../../shared/project-top-menu/project-top-menu.util';
 import {
+    canReorderList,
     defaultToolbarFilterState,
-    isToolbarFilterDefault,
+    removeParentIdFromFilter,
     todayItemMatchesToolbar,
     type TaskToolbarFilterState,
+    type ToolbarFilterContext,
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 
 export type TodayItem =
@@ -35,6 +41,27 @@ export type TodayItem =
 
 function itemKey(item: TodayItem): string {
     return item.kind === 'parent' ? 'p-' + item.task.id : 'c-' + item.task.id;
+}
+
+function todayParentOf(item: TodayItem): ParentTask {
+    return item.kind === 'parent' ? item.task : item.parent;
+}
+
+function todayStatusOf(item: TodayItem): TaskStatus {
+    return item.kind === 'parent' ? item.task.status : item.task.status;
+}
+
+function todayStatusRank(s: TaskStatus): number {
+    switch (s) {
+        case '未着手':
+            return 0;
+        case '進行中':
+            return 1;
+        case '完了':
+            return 2;
+        default:
+            return 3;
+    }
 }
 
 type ParentEditDraft = {
@@ -59,7 +86,10 @@ type ChildEditDraft = { title: string; assigneeId: string; scheduledDateStr: str
         ProgressMemberShellComponent,
         MemberProgressBubblesComponent,
         ParentTeamProgressStripComponent,
-        TaskSearchFilterToolbarComponent
+        TaskSearchFilterToolbarComponent,
+        ProjectTopMenuComponent,
+        DrawerLogoutComponent,
+        CharacterVideoDockComponent
     ],
     templateUrl: './today-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './today-tasks.css', '../../progress-ai.css']
@@ -105,6 +135,10 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return false;
     }
 
+    hideStagnationInToolbar(): boolean {
+        return this.ctx.mode === 'personal';
+    }
+
     showMyTaskMentionToolbar(): boolean {
         return this.ctx.mode !== 'personal';
     }
@@ -140,7 +174,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     /** 進捗シェル（停滞報告・AI）用の親タスク一覧 */
     get progressShellParents(): ParentTask[] {
         return this.appService
-            .getSortedParentTasksForProject(this.projectId, false)
+            .getActiveSortedParentTasksForProject(this.projectId)
             .filter((t) => this.isTaskVisibleToMember(t));
     }
 
@@ -162,12 +196,36 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     }
 
     get projectName(): string {
-        if (this.ctx.mode === 'personal') return '個人タスク';
+        if (this.ctx.mode === 'personal') {
+            return this.appService.getProjectDisplayName(this.projectId);
+        }
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
+
+    get characterDockBubbleOpen(): boolean {
+        return this.characterBubbleVisible || this.characterHoverHint;
+    }
+
+    get characterDockBubbleLine(): string {
+        if (this.characterBubbleVisible) return this.characterBubbleText;
+        if (this.characterHoverHint) return TodayTasksComponent.CHARACTER_HOVER_HINT;
+        return '';
+    }
+
+    onCharacterDockPointerEnter(): void {
+        if (this.characterBubbleVisible) return;
+        this.characterHoverHint = true;
+    }
+
+    onCharacterDockPointerLeave(): void {
+        this.characterHoverHint = false;
+    }
+
     readonly characterVideoSrc = 'assets/character-typing.mp4';
+    private static readonly CHARACTER_HOVER_HINT = '話し聞くよ？';
     characterBubbleVisible = false;
     characterBubbleText = '';
+    characterHoverHint = false;
     memberTaskChangeConfirm = false;
     private characterShowTimerId: number | null = null;
     private characterHideTimerId: number | null = null;
@@ -222,15 +280,16 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     get baseTodayItems(): TodayItem[] {
         const items: TodayItem[] = [];
         const parents = this.appService
-            .getSortedParentTasksForProject(this.projectId, false)
+            .getActiveSortedParentTasksForProject(this.projectId)
             .filter((t) => (t.isTodayTask || this.appService.isParentDueToday(t.deadline)) && this.isTaskVisibleToMember(t));
         for (const p of parents) {
             items.push({ kind: 'parent', task: p });
         }
         for (const c of this.appService.childTasks) {
             if (c.projectId !== this.projectId) continue;
+            if (!this.appService.isActiveChildTask(c)) continue;
             const parent = this.appService.parentTasks.find((pt) => pt.id === c.parentTaskId);
-            if (!parent || parent.isDraft || !this.isTaskVisibleToMember(parent)) continue;
+            if (!parent || !this.appService.isActiveParentTask(parent) || !this.isTaskVisibleToMember(parent)) continue;
             if (parent.isTodayTask || this.appService.isParentDueToday(parent.deadline)) continue;
             if (!this.appService.childAppearsOnMemberToday(parent, c, this.memberId)) continue;
             items.push({ kind: 'child', task: c, parent });
@@ -256,13 +315,14 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     get toolbarCandidateParents(): ParentTask[] {
         const ids = new Set<string>();
-        for (const p of this.appService.getSortedParentTasksForProject(this.projectId, false)) {
+        for (const p of this.appService.getActiveSortedParentTasksForProject(this.projectId)) {
             if ((p.isTodayTask || this.appService.isParentDueToday(p.deadline)) && this.isTaskVisibleToMember(p)) ids.add(p.id);
         }
         for (const c of this.appService.childTasks) {
             if (c.projectId !== this.projectId) continue;
+            if (!this.appService.isActiveChildTask(c)) continue;
             const parent = this.appService.parentTasks.find((pt) => pt.id === c.parentTaskId);
-            if (!parent || !this.isTaskVisibleToMember(parent) || parent.isTodayTask || this.appService.isParentDueToday(parent.deadline)) continue;
+            if (!parent || !this.appService.isActiveParentTask(parent) || !this.isTaskVisibleToMember(parent) || parent.isTodayTask || this.appService.isParentDueToday(parent.deadline)) continue;
             if (this.appService.childAppearsOnMemberToday(parent, c, this.memberId)) {
                 ids.add(parent.id);
             }
@@ -272,21 +332,30 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
             .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ja'));
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return this.ctx.mode === 'personal';
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: (parentTaskId, childTaskId) =>
+                this.progress.hasOpenStagnationForTask(this.projectId, parentTaskId, childTaskId)
+        };
     }
 
     /** 個人ワークスペースのみ: 進捗アイコン・吹き出し・担当UIを非表示 */
+    get showProjectTopMemberEdit(): boolean {
+        return showProjectTopMemberEdit(this.appService, this.ctx.mode, this.projectId, this.memberId);
+    }
+
     hideTeamTaskChrome(): boolean {
         return this.ctx.mode === 'personal';
     }
 
     todayListDragEnabled(): boolean {
-        return isToolbarFilterDefault(this.toolbarFilter);
+        return canReorderList(this.toolbarFilter);
     }
 
     get todayItems(): TodayItem[] {
-        return this.baseTodayItems.filter((it) => todayItemMatchesToolbar(this.appService, it, this.toolbarFilter));
+        return this.baseTodayItems.filter((it) => todayItemMatchesToolbar(this.toolbarFilterCtx(), it, this.toolbarFilter));
     }
 
     trackKey(item: TodayItem): string {
@@ -309,13 +378,59 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         const rows = [...this.todayItems];
         if (ev.previousIndex === ev.currentIndex) return;
         moveItemInArray(rows, ev.previousIndex, ev.currentIndex);
-        const keys = rows.map((x) => itemKey(x));
+        this.applyTodayOrderKeys(rows.map((x) => itemKey(x)));
+    }
+
+    onTodaySortPick(kind: 'deadline' | 'status'): void {
+        const rows = [...this.baseTodayItems];
+        rows.sort((a, b) => this.compareTodayForSort(a, b, kind));
+        this.applyTodayOrderKeys(rows.map((x) => itemKey(x)));
+    }
+
+    private applyTodayOrderKeys(keys: string[]): void {
         this.appService.applyTodayReorderForMember(this.memberId, keys, (k) => {
             if (k.startsWith('p-')) {
                 return this.appService.parentTasks.find((x) => x.id === k.slice(2));
             }
             return this.appService.childTasks.find((x) => x.id === k.slice(2));
         });
+    }
+
+    private compareTodayForSort(a: TodayItem, b: TodayItem, kind: 'deadline' | 'status'): number {
+        if (kind === 'deadline') {
+            const ad = this.todayDeadlineSortMs(a);
+            const bd = this.todayDeadlineSortMs(b);
+            if (ad !== bd) return ad - bd;
+        } else {
+            const sa = todayStatusRank(todayStatusOf(a));
+            const sb = todayStatusRank(todayStatusOf(b));
+            if (sa !== sb) return sa - sb;
+            const ad = this.todayDeadlineSortMs(a);
+            const bd = this.todayDeadlineSortMs(b);
+            if (ad !== bd) return ad - bd;
+        }
+        const pa = todayParentOf(a);
+        const pb = todayParentOf(b);
+        const pr = pa.priority === '高' ? 0 : 1;
+        const qr = pb.priority === '高' ? 0 : 1;
+        if (pr !== qr) return pr - qr;
+        const ta = a.kind === 'parent' ? a.task.title : a.task.title;
+        const tb = b.kind === 'parent' ? b.task.title : b.task.title;
+        return (ta || '').localeCompare(tb || '', 'ja');
+    }
+
+    private todayDeadlineSortMs(item: TodayItem): number {
+        if (item.kind === 'child') {
+            const c = item.task;
+            if (c.scheduledDate) {
+                const t = new Date(c.scheduledDate as Date | string).getTime();
+                if (!Number.isNaN(t)) return t;
+            }
+        }
+        const p = todayParentOf(item);
+        if (!p.deadline || AppService.deadlineUnset(p.deadline)) return Number.MAX_SAFE_INTEGER;
+        const t = new Date(p.deadline as Date | string).getTime();
+        return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
     }
 
     createMyTodayTask(): void {
@@ -362,15 +477,24 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     }
 
     visibleChildRowsForParent(parent: ParentTask): ChildTask[] {
-        const all = this.appService.getChildTasksByParentId(parent.id);
+        const all = this.appService.getWorkViewChildTasksByParentId(parent.id);
         if (all.length < 3) return all;
         if (this.isSubtasksExpanded(parent.id)) return all;
         return all.slice(0, 2);
     }
 
     moreSubtasksHiddenCount(parent: ParentTask): number {
-        const n = this.appService.getChildTasksByParentId(parent.id).length;
+        const n = this.appService.getWorkViewChildTasksByParentId(parent.id).length;
         return n >= 3 ? n - 2 : 0;
+    }
+
+    childAssigneeMember(c: ChildTask): Member | undefined {
+        return c.assigneeId ? this.appService.getMemberById(c.assigneeId) : undefined;
+    }
+
+    revertChildFromComplete(c: ChildTask, ev?: Event): void {
+        ev?.stopPropagation();
+        this.appService.revertChildTaskFromComplete(c.id, this.memberId);
     }
 
     actionLabel(status: TaskStatus): string {
@@ -596,6 +720,11 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
         return this.isMyParent(task);
     }
 
+    /** 子タスクが無いときのみ親のステータス操作ボタンを表示 */
+    showParentStatusButton(parent: ParentTask): boolean {
+        return this.appService.getChildTasksByParentId(parent.id).length === 0;
+    }
+
     cycleParentFromCard(task: ParentTask, ev: Event): void {
         ev.stopPropagation();
         if (this.blockCompletionForParent(task)) return;
@@ -658,13 +787,11 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     deleteParentTask(taskId: string): void {
         const t = this.appService.parentTasks.find((p) => p.id === taskId);
-        if (!t || !this.isMyParent(t)) return;
-        if (!confirm('この親タスクと紐づく子タスクをすべて削除しますか？')) return;
+        if (!t || !this.appService.memberCanDeleteParent(t, this.memberId)) return;
+        if (!confirm('この親タスクと紐づく子タスクをすべてゴミ箱に移しますか？')) return;
         if (this.parentEditTaskId === taskId) this.cancelParentEdit();
-        this.appService.deleteParentTask(taskId);
-        if (this.toolbarFilter.pickParentId === taskId) {
-            this.toolbarFilter = { ...this.toolbarFilter, pickParentId: null };
-        }
+        this.appService.trashParentTask(taskId, this.memberId);
+        this.toolbarFilter = removeParentIdFromFilter(this.toolbarFilter, taskId);
     }
 
     enterParentEdit(task: ParentTask, ev?: Event): void {
@@ -744,6 +871,7 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
 
     enterChildEdit(c: ChildTask, ev?: Event): void {
         ev?.stopPropagation();
+        if (c.status === '完了') return;
         if (this.parentEditTaskId) this.cancelParentEdit();
         this.childEditId = c.id;
         this.childEditDraft = {
@@ -789,9 +917,12 @@ export class TodayTasksComponent implements OnInit, OnDestroy {
     }
 
     deleteChildTask(childId: string): void {
-        if (!confirm('この子タスクを削除しますか？')) return;
+        const c = this.appService.childTasks.find((x) => x.id === childId);
+        const parent = c ? this.appService.parentTasks.find((p) => p.id === c.parentTaskId) : undefined;
+        if (!c || !parent || !this.appService.memberCanDeleteChild(parent, c, this.memberId)) return;
+        if (!confirm('この子タスクをゴミ箱に移しますか？')) return;
         if (this.childEditId === childId) this.cancelChildEdit();
-        this.appService.deleteChildTask(childId);
+        this.appService.trashChildTask(childId, this.memberId);
     }
 
     toggleUrgent(): void {

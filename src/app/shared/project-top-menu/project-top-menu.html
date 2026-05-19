@@ -1,0 +1,243 @@
+<nav class="ptm-bar" aria-label="プロジェクトメニュー">
+    <button type="button" class="ptm-bar__btn" (click)="openCreate()">プロジェクト作成</button>
+    <span class="ptm-bar__btn-wrap">
+        <button type="button" class="ptm-bar__btn" (click)="openTeamPicker()">チームプロジェクト</button>
+        @if (unseenApprovedTeamCount() > 0) {
+            <span class="ptm-bar__notify-badge">{{ unseenApprovedTeamCount() }}</span>
+        }
+    </span>
+    <button type="button" class="ptm-bar__btn" (click)="openPersonalPicker()">個人プロジェクト</button>
+    <button type="button" class="ptm-bar__btn" (click)="openJoin()">参加コード入力</button>
+    @if (showApproveMembers()) {
+        <span class="ptm-bar__btn-wrap">
+            <button type="button" class="ptm-bar__btn" (click)="openApprove()">招待メンバー承認</button>
+            @if (pendingForApprove().length > 0) {
+                <span class="ptm-bar__notify-badge">{{ pendingForApprove().length }}</span>
+            }
+        </span>
+    }
+    @if (showMemberEdit()) {
+        <button type="button" class="ptm-bar__btn" (click)="openMemberEdit()">メンバー編集</button>
+    }
+    <button
+        type="button"
+        class="ptm-bar__btn ptm-bar__btn--icon"
+        [disabled]="!currentProjectId()"
+        (click)="goTrash()"
+        title="ゴミ箱"
+        aria-label="ゴミ箱"
+    >
+        <svg class="ptm-bar__icon-svg" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path
+                fill="currentColor"
+                d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"
+            />
+        </svg>
+    </button>
+</nav>
+
+@if (createOpen()) {
+    <div class="ptm-modal-backdrop" (click)="createOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich" role="dialog" aria-labelledby="ptm-create-title">
+        <h2 id="ptm-create-title" class="ptm-modal__title">プロジェクト作成</h2>
+        <p class="ptm-modal__lead">名前と種別を入力して作成します。</p>
+        <label class="ptm-field">
+            <span class="ptm-field__label">名前</span>
+            <input type="text" [(ngModel)]="createName" class="input-pill" placeholder="例: 新商品リリース" />
+        </label>
+        <label class="ptm-field">
+            <span class="ptm-field__label">説明</span>
+            <textarea [(ngModel)]="createDescription" class="input-pill" rows="2" placeholder="任意"></textarea>
+        </label>
+        <label class="ptm-field">
+            <span class="ptm-field__label">種別</span>
+            <select [(ngModel)]="createIsPersonal" class="input-pill">
+                <option [ngValue]="false">チーム</option>
+                <option [ngValue]="true">個人</option>
+            </select>
+        </label>
+        <div class="ptm-modal__actions">
+            <button type="button" class="btn" (click)="createOpen.set(false)">キャンセル</button>
+            <button type="button" class="btn btn--primary" (click)="submitCreate()">作成</button>
+        </div>
+    </div>
+}
+
+@if (createdSuccessOpen()) {
+    <div class="ptm-modal-backdrop" (click)="closeCreatedSuccess()"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich ptm-modal--success" role="dialog" aria-labelledby="ptm-success-title">
+        <h2 id="ptm-success-title" class="ptm-modal__title">作成しました</h2>
+        <p class="ptm-modal__lead">プロジェクトが作成されました。</p>
+        @if (!createdWasPersonal) {
+            <div class="ptm-invite-box">
+                <span class="ptm-invite-box__label">参加コード（ID 末尾 6 桁）</span>
+                <div class="ptm-invite-box__row">
+                    <code class="ptm-invite-box__code">{{ createdInviteCode() }}</code>
+                    <button type="button" class="btn btn--primary btn--compact" (click)="copyInviteCode()">コピー</button>
+                </div>
+                @if (copyDone()) {
+                    <p class="ptm-invite-box__hint ptm-invite-box__hint--ok">クリップボードにコピーしました</p>
+                } @else {
+                    <p class="ptm-invite-box__hint">チームメンバーにこのコードを共有してください。</p>
+                }
+            </div>
+        }
+        <div class="ptm-modal__actions">
+            <button type="button" class="btn btn--primary" (click)="closeCreatedSuccess()">了解</button>
+        </div>
+    </div>
+}
+
+@if (joinOpen()) {
+    <div class="ptm-modal-backdrop" (click)="joinOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich" role="dialog" aria-labelledby="ptm-join-title">
+        <h2 id="ptm-join-title" class="ptm-modal__title">参加コード入力</h2>
+        <p class="ptm-modal__lead">チームプロジェクト ID の末尾 6 文字を入力してください。</p>
+        <input type="text" [(ngModel)]="joinCode" class="input-pill ptm-code-input" maxlength="6" placeholder="例: A1B2C3" />
+        <div class="ptm-modal__actions">
+            <button type="button" class="btn" (click)="joinOpen.set(false)">キャンセル</button>
+            <button type="button" class="btn btn--primary" (click)="submitJoin()">申請する</button>
+        </div>
+    </div>
+}
+
+@if (approveOpen()) {
+    <div class="ptm-modal-backdrop" (click)="approveOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich" role="dialog" aria-labelledby="ptm-approve-title">
+        <h2 id="ptm-approve-title" class="ptm-modal__title">招待メンバー承認</h2>
+        @if (showApproveInviteCode()) {
+            <div class="ptm-invite-box">
+                <span class="ptm-invite-box__label">参加コード（ID 末尾 6 桁）</span>
+                <div class="ptm-invite-box__row">
+                    <code class="ptm-invite-box__code">{{ currentInviteCode() }}</code>
+                    <button type="button" class="btn btn--primary btn--compact" (click)="copyApproveInviteCode()">コピー</button>
+                </div>
+                @if (approveCopyDone()) {
+                    <p class="ptm-invite-box__hint ptm-invite-box__hint--ok">クリップボードにコピーしました</p>
+                } @else {
+                    <p class="ptm-invite-box__hint">メンバーに共有する参加コードです。</p>
+                }
+            </div>
+            <div class="ptm-invite-box ptm-invite-box--guest">
+                <span class="ptm-invite-box__label">ゲスト用参加コード（閲覧のみ）</span>
+                @if (guestInviteCode(); as gcode) {
+                    <div class="ptm-invite-box__row">
+                        <code class="ptm-invite-box__code">{{ gcode }}</code>
+                        <button type="button" class="btn btn--primary btn--compact" (click)="copyGuestInviteCode()">コピー</button>
+                    </div>
+                    @if (guestInviteCopyDone()) {
+                        <p class="ptm-invite-box__hint ptm-invite-box__hint--ok">クリップボードにコピーしました</p>
+                    } @else {
+                        <p class="ptm-invite-box__hint">閲覧のみで参加する人用のコードです。</p>
+                    }
+                } @else {
+                    <div class="ptm-invite-box__row">
+                        <button type="button" class="btn btn--primary btn--compact" (click)="issueGuestInviteCode()">ゲスト用コードを発行</button>
+                    </div>
+                    <p class="ptm-invite-box__hint">発行後、ゲストにコードを共有してください。</p>
+                }
+            </div>
+        }
+        @if (!pendingForApprove().length) {
+            <p class="ptm-modal__lead">承認待ちの申請はありません。</p>
+        } @else {
+            <ul class="ptm-approve-list">
+                @for (p of pendingForApprove(); track p.uid) {
+                    <li class="ptm-approve-list__item">
+                        <label>
+                            <input
+                                type="checkbox"
+                                [checked]="approveSelected.has(p.uid)"
+                                (change)="toggleApprove(p.uid, $any($event.target).checked)"
+                            />
+                            <span>{{ p.name }} <small>({{ p.email }})</small>{{ pendingJoinRoleLabel(p) }}</span>
+                        </label>
+                    </li>
+                }
+            </ul>
+        }
+        <div class="ptm-modal__actions">
+            <button type="button" class="btn" (click)="approveOpen.set(false)">閉じる</button>
+            <button type="button" class="btn btn--primary" (click)="submitApprove()" [disabled]="!approveSelected.size">
+                承認する
+            </button>
+        </div>
+    </div>
+}
+
+@if (memberEditOpen()) {
+    <div class="ptm-modal-backdrop" (click)="memberEditOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich" role="dialog" aria-labelledby="ptm-member-title">
+        <h2 id="ptm-member-title" class="ptm-modal__title">メンバー編集</h2>
+        <p class="ptm-modal__lead">プロジェクトから外す（アプリ全体の削除ではありません）</p>
+        <ul class="ptm-member-list">
+            @for (m of projectMembers(); track m.uid) {
+                <li class="ptm-member-row">
+                    <span>{{ m.name }}</span>
+                    @if (!isProjectAdmin(m.uid)) {
+                        <button type="button" class="btn btn-danger btn--compact" (click)="removeFromProject(m.uid, m.name)">
+                            外す
+                        </button>
+                    } @else {
+                        <span class="ptm-badge">責任者</span>
+                    }
+                </li>
+            }
+        </ul>
+        <div class="ptm-modal__actions">
+            <button type="button" class="btn" (click)="memberEditOpen.set(false)">閉じる</button>
+        </div>
+    </div>
+}
+
+@if (teamPickerOpen()) {
+    <div class="ptm-modal-backdrop" (click)="teamPickerOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich">
+        <h2 class="ptm-modal__title">チームプロジェクト</h2>
+        @if (!teamProjects().length) {
+            <p class="ptm-modal__lead">参加中のチームプロジェクトがありません。</p>
+            <div class="ptm-modal__actions">
+                <button type="button" class="btn" (click)="teamPickerOpen.set(false)">閉じる</button>
+            </div>
+        } @else {
+            <select [(ngModel)]="teamPickId" class="input-pill">
+                @for (p of teamProjects(); track p.id) {
+                    <option [ngValue]="p.id">{{ p.name }}</option>
+                }
+            </select>
+            <div class="ptm-modal__actions">
+                <button type="button" class="btn" (click)="teamPickerOpen.set(false)">キャンセル</button>
+                @if (canDeleteTeamPick()) {
+                    <button type="button" class="btn btn-danger" (click)="deleteSelectedTeamProject()">削除</button>
+                }
+                <button type="button" class="btn btn--primary" (click)="confirmTeamPick()" [disabled]="!teamPickId">開く</button>
+            </div>
+        }
+    </div>
+}
+
+@if (personalPickerOpen()) {
+    <div class="ptm-modal-backdrop" (click)="personalPickerOpen.set(false)"></div>
+    <div class="ptm-modal card-elevated ptm-modal--rich">
+        <h2 class="ptm-modal__title">個人プロジェクト</h2>
+        @if (!personalProjects().length) {
+            <p class="ptm-modal__lead">個人プロジェクトがありません。</p>
+            <div class="ptm-modal__actions">
+                <button type="button" class="btn" (click)="personalPickerOpen.set(false)">閉じる</button>
+            </div>
+        } @else {
+            <select [(ngModel)]="personalPickId" class="input-pill">
+                @for (p of personalProjects(); track p.id) {
+                    <option [ngValue]="p.id">{{ p.name }}</option>
+                }
+            </select>
+            <div class="ptm-modal__actions">
+                <button type="button" class="btn" (click)="personalPickerOpen.set(false)">キャンセル</button>
+                @if (canDeletePersonalPick()) {
+                    <button type="button" class="btn btn-danger" (click)="deleteSelectedPersonalProject()">削除</button>
+                }
+                <button type="button" class="btn btn--primary" (click)="confirmPersonalPick()" [disabled]="!personalPickId">開く</button>
+            </div>
+        }
+    </div>
+}

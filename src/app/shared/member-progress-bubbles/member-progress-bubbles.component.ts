@@ -10,6 +10,8 @@ import type { ProgressBubbleVm } from '../../services/progress-reporting.service
   styleUrls: ['./member-progress-bubbles.component.css']
 })
 export class MemberProgressBubblesComponent {
+  private readonly brokenPhotoKeys = new Set<string>();
+
   @Input() bubbles: ProgressBubbleVm[] = [];
   @Input() layout: 'row' | 'inline' | 'single' = 'row';
   /** 親チームストリップ等：アバター横に名前がホバーで展開 */
@@ -18,6 +20,15 @@ export class MemberProgressBubblesComponent {
   @Input() showAvatar = true;
   /** false のとき上段の進捗吹き出しを出さない（親ストリップで子ありのときなど） */
   @Input() showSpeechBubble = true;
+
+  showMemberPhoto(b: ProgressBubbleVm): boolean {
+    const url = b.memberPhotoUrl?.trim();
+    return !!url && !this.brokenPhotoKeys.has(b.bubbleKey);
+  }
+
+  onMemberPhotoError(bubbleKey: string): void {
+    this.brokenPhotoKeys.add(bubbleKey);
+  }
 
   initials(name: string): string {
     const n = name.trim();

@@ -1,7 +1,7 @@
 <div class="manage-shell limit-tasks today-tasks-page">
     <aside class="sidebar card-elevated">
         <div class="sidebar__inner">
-            <h2 class="sidebar-section-title">MYタスク作成</h2>
+            <h2 class="sidebar-section-title">自分用ToDo作成</h2>
             <label class="field-label" for="tt-title">タイトル欄</label>
             <div class="deadline-row limit-deadline-row">
                 <input id="tt-title" class="input-pill flex-grow-title" type="text" placeholder="タイトル" [(ngModel)]="title" name="ttitle" />
@@ -62,23 +62,7 @@
 
             <button type="button" class="btn-confirm" (click)="createMyTodayTask()">確定</button>
 
-            <div class="character-video-dock character-video-dock--sidebar character-video-dock--bubble-above" aria-live="polite">
-                <button type="button" class="character-video-dock__trigger" (click)="openCharacterOlChat()" aria-label="AI相談を開く">
-                    <video class="character-video-dock__video" autoplay loop muted playsinline preload="metadata">
-                        <source [src]="characterVideoSrc" type="video/mp4" />
-                    </video>
-                </button>
-                <div
-                    class="character-video-bubble"
-                    [class.character-video-bubble--visible]="characterBubbleVisible"
-                    [class.character-video-bubble--admin-consult]="memberTaskChangeConfirm"
-                >
-                    <span class="character-video-bubble__body-text">{{ characterBubbleText }}</span>
-                    @if (memberTaskChangeConfirm) {
-                        <button type="button" class="character-video-bubble__confirm" (click)="confirmMemberTaskChangeRead()">確認</button>
-                    }
-                </div>
-            </div>
+
         </div>
     </aside>
 
@@ -90,9 +74,29 @@
             [parentTasks]="progressShellParents"
             [showOlDock]="false"
             [suppressProgressStagnationUi]="suppressMemberProgressChrome()"
+            [hideStagnationActionBar]="!suppressMemberProgressChrome()"
         />
         <span class="progress-revision-dummy" aria-hidden="true">{{ progress.progressRevision().t }}</span>
-        <header class="project-header card-elevated limit-header today-header project-header--with-progress">
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="projectId"
+                    [showApproveMembers]="false"
+                    [showMemberEdit]="showProjectTopMemberEdit"
+                />
+            </div>
+            <header class="project-header card-elevated limit-header today-header project-header--with-progress">
+            @if (!suppressMemberProgressChrome() && progressMemberShell) {
+                <div class="header-stagnation-cluster">
+                    <button type="button" class="btn-stagnation-report" (click)="progressMemberShell.openManualStagnationModal()">
+                        停滞報告 😢
+                    </button>
+                    @if (progressMemberShell.isStagnatingSelf()) {
+                        <span class="header-stagnation-cluster__elapsed">停滞中！ {{ progressMemberShell.stagnationElapsed() }}</span>
+                        <button type="button" class="btn-resolve-stagnation" (click)="progressMemberShell.openResolveStagnationModal()">解決！</button>
+                    }
+                </div>
+            }
             @if (headerSelfBubbles.length && !hideTeamTaskChrome()) {
                 <app-member-progress-bubbles
                     class="header-self-identity"
@@ -113,7 +117,11 @@
                     (filterChange)="toolbarFilter = $event"
                     [members]="users"
                     [candidateParents]="toolbarCandidateParents"
-                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    filterMode="member"
+                    [hideStagnationFilter]="hideStagnationInToolbar()"
+                    [useFixedPanel]="true"
+                    [showSortMenu]="true"
+                    (parentSortPicked)="onTodaySortPick($event)"
                 />
             </div>
             <div class="icon-gear-wrap">
@@ -123,6 +131,7 @@
                 <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="メニューを開く">⚙</button>
             </div>
         </header>
+        </div>
 
         <div class="today-list parent-list" cdkDropList [cdkDropListDisabled]="!todayListDragEnabled()" (cdkDropListDropped)="onTodayDrop($event)">
             @for (item of todayItems; track trackKey(item)) {
@@ -236,13 +245,35 @@
                                                         <button type="button" class="btn-inline-save btn-inline-save--small" (click)="saveChildEdit(c.id)">保存</button>
                                                         <button type="button" class="btn-inline-cancel btn-inline-cancel--small" (click)="cancelChildEdit()">戻る</button>
                                                     </div>
+                                                } @else if (c.status === '完了') {
+                                                    <div class="subtask-item subtask-item--done subtask-item--done-compact">
+                                                        <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
+                                                        <span class="subtask-item__title"
+                                                            >{{ c.title }}
+                                                            @if (formatScheduledShort(c.scheduledDate)) {
+                                                                <span class="subtask-scheduled-chip"> 📅 {{ formatScheduledShort(c.scheduledDate) }}</span>
+                                                            }
+                                                        </span>
+                                                        @if (!hideTeamTaskChrome() && childAssigneeMember(c); as m) {
+                                                            <span class="subtask-assignee-icon-only" [title]="m.name">
+                                                                @if (m.photoURL) {
+                                                                    <img [src]="m.photoURL" [alt]="m.name" />
+                                                                } @else {
+                                                                    <span class="subtask-assignee-icon-only__fallback">{{ initials(m.name) }}</span>
+                                                                }
+                                                            </span>
+                                                        }
+                                                        <button type="button" class="btn-child-revert" (click)="revertChildFromComplete(c, $event)">未完了に戻す</button>
+                                                        <button type="button" class="btn-delete btn-delete--small" (click)="deleteChildTask(c.id)" title="子タスクを削除" aria-label="削除">
+                                                            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
+                                                        </button>
+                                                    </div>
                                                 } @else {
                                                     <div
                                                         class="subtask-item"
                                                         [ngClass]="{
                                                             'subtask-item--todo': c.status === '未着手',
                                                             'subtask-item--prog': c.status === '進行中',
-                                                            'subtask-item--done': c.status === '完了',
                                                             'subtask-item--today': appService.childTodayPillVisualOn(item.task, c)
                                                         }"
                                                     >
@@ -259,9 +290,7 @@
                                                                 class="today-action-btn today-action-btn--subtask-row"
                                                                 [class.today-action-btn--todo]="c.status === '未着手'"
                                                                 [class.today-action-btn--prog]="c.status === '進行中'"
-                                                                [class.today-action-btn--done]="c.status === '完了'"
                                                                 (click)="cycleChildAction(c, $event)"
-                                                                [disabled]="c.status === '完了'"
                                                             >
                                                                 {{ actionLabel(c.status) }}
                                                             </button>
@@ -305,13 +334,16 @@
                         } @else {
                             @if (isMyTask(item.task)) {
                                 <div class="parent-card__toolbar">
-                                    <button type="button" class="btn-delete" (click)="deleteParentTask(item.task.id); $event.stopPropagation()" title="MYタスクを削除" aria-label="削除">
+                                    <button type="button" class="btn-delete" (click)="deleteParentTask(item.task.id); $event.stopPropagation()" title="自分用ToDoを削除" aria-label="削除">
                                         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
                                     </button>
                                 </div>
                             }
-                            <div class="parent-card__grid parent-card__grid--two">
-                                <section class="parent-info">
+                            <div
+                                class="parent-card__grid parent-card__grid--two"
+                                [class.parent-card__grid--child-compact]="!showParentStatusButton(item.task)"
+                            >
+                                <section class="parent-info" [class.parent-info--child-compact]="!showParentStatusButton(item.task)">
                                     <div class="parent-info__lead-stack">
                                         <div class="parent-info__view" (click)="enterParentEdit(item.task, $event)">
                                             <div class="parent-info__deadline">
@@ -336,17 +368,19 @@
                                             </div>
                                             <p class="edit-hint">クリックして編集</p>
                                         </div>
-                                        <button
-                                            type="button"
-                                            class="today-action-btn today-action-btn--parent-slot"
-                                            [class.today-action-btn--todo]="item.task.status === '未着手'"
-                                            [class.today-action-btn--prog]="item.task.status === '進行中'"
-                                            [class.today-action-btn--done]="item.task.status === '完了'"
-                                            (click)="cycleParentFromCard(item.task, $event)"
-                                            [disabled]="item.task.status === '完了'"
-                                        >
-                                            {{ actionLabel(item.task.status) }}
-                                        </button>
+                                        @if (showParentStatusButton(item.task)) {
+                                            <button
+                                                type="button"
+                                                class="today-action-btn today-action-btn--parent-slot"
+                                                [class.today-action-btn--todo]="item.task.status === '未着手'"
+                                                [class.today-action-btn--prog]="item.task.status === '進行中'"
+                                                [class.today-action-btn--done]="item.task.status === '完了'"
+                                                (click)="cycleParentFromCard(item.task, $event)"
+                                                [disabled]="item.task.status === '完了'"
+                                            >
+                                                {{ actionLabel(item.task.status) }}
+                                            </button>
+                                        }
                                     </div>
                                     @if (!hideTeamTaskChrome()) {
                                         <app-parent-team-progress-strip
@@ -409,13 +443,35 @@
                                                         <button type="button" class="btn-inline-save btn-inline-save--small" (click)="saveChildEdit(c.id)">保存</button>
                                                         <button type="button" class="btn-inline-cancel btn-inline-cancel--small" (click)="cancelChildEdit()">戻る</button>
                                                     </div>
+                                                } @else if (c.status === '完了') {
+                                                    <div class="subtask-item subtask-item--done subtask-item--done-compact">
+                                                        <span [class]="childStatusChipClass(c.status)">{{ c.status }}</span>
+                                                        <span class="subtask-item__title"
+                                                            >{{ c.title }}
+                                                            @if (formatScheduledShort(c.scheduledDate)) {
+                                                                <span class="subtask-scheduled-chip"> 📅 {{ formatScheduledShort(c.scheduledDate) }}</span>
+                                                            }
+                                                        </span>
+                                                        @if (!hideTeamTaskChrome() && childAssigneeMember(c); as m) {
+                                                            <span class="subtask-assignee-icon-only" [title]="m.name">
+                                                                @if (m.photoURL) {
+                                                                    <img [src]="m.photoURL" [alt]="m.name" />
+                                                                } @else {
+                                                                    <span class="subtask-assignee-icon-only__fallback">{{ initials(m.name) }}</span>
+                                                                }
+                                                            </span>
+                                                        }
+                                                        <button type="button" class="btn-child-revert" (click)="revertChildFromComplete(c, $event)">未完了に戻す</button>
+                                                        <button type="button" class="btn-delete btn-delete--small" (click)="deleteChildTask(c.id)" title="子タスクを削除" aria-label="削除">
+                                                            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>
+                                                        </button>
+                                                    </div>
                                                 } @else {
                                                     <div
                                                         class="subtask-item"
                                                         [ngClass]="{
                                                             'subtask-item--todo': c.status === '未着手',
                                                             'subtask-item--prog': c.status === '進行中',
-                                                            'subtask-item--done': c.status === '完了',
                                                             'subtask-item--today': appService.childTodayPillVisualOn(item.task, c)
                                                         }"
                                                     >
@@ -432,9 +488,7 @@
                                                                 class="today-action-btn today-action-btn--subtask-row"
                                                                 [class.today-action-btn--todo]="c.status === '未着手'"
                                                                 [class.today-action-btn--prog]="c.status === '進行中'"
-                                                                [class.today-action-btn--done]="c.status === '完了'"
                                                                 (click)="cycleChildAction(c, $event)"
-                                                                [disabled]="c.status === '完了'"
                                                             >
                                                                 {{ actionLabel(c.status) }}
                                                             </button>
@@ -551,6 +605,21 @@
         </div>
     </main>
 
+    <app-character-video-dock
+        dockScope="member"
+        [userUid]="memberId"
+        [videoSrc]="characterVideoSrc"
+        [bubbleOpen]="characterDockBubbleOpen"
+        [bubbleText]="characterDockBubbleLine"
+        [showConfirmButton]="memberTaskChangeConfirm"
+        [underDrawer]="rightMenuOpen"
+        (videoClick)="openCharacterOlChat()"
+        (confirmClick)="confirmMemberTaskChangeRead()"
+        (dockPointerEnter)="onCharacterDockPointerEnter()"
+        (dockPointerLeave)="onCharacterDockPointerLeave()"
+    />
+
+
     @if (rightMenuOpen) {
         <div class="overlay-backdrop" (click)="closeRightMenu()"></div>
     }
@@ -564,6 +633,7 @@
                 [currentNavKey]="'today'"
                 (nav)="closeRightMenu()"
             />
+            <app-drawer-logout (nav)="closeRightMenu()" />
         </nav>
     </aside>
 

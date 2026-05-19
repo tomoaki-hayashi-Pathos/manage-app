@@ -1,6 +1,14 @@
 <div class="manage-shell completed-tasks-page">
     <main class="main-area ct-main">
-        <header class="project-header card-elevated ct-header">
+        <div class="page-header-stack">
+            <div class="page-header-stack__top">
+                <app-project-top-menu
+                    [currentProjectId]="projectId"
+                    [showApproveMembers]="false"
+                    [showMemberEdit]="false"
+                />
+            </div>
+            <header class="project-header card-elevated ct-header">
             <div class="ct-header__titles">
                 <h1 class="project-header__title ct-header__title">完了したタスク</h1>
                 <p class="ct-header__sub">
@@ -10,21 +18,30 @@
                     }
                 </p>
             </div>
+            @if (!isTeamGuestViewer()) {
             <button type="button" class="ct-btn-revert" [disabled]="selectedIds.length === 0" (click)="revertBulk()" title="未完了に戻す">
                 <span class="ct-btn-revert__icon" aria-hidden="true">☑</span>
                 未完了に戻す
             </button>
+            }
             <div class="project-header__filter project-header__filter--toolbar">
                 <app-task-search-filter-toolbar
                     [filter]="toolbarFilter"
                     (filterChange)="toolbarFilter = $event"
                     [members]="users"
                     [candidateParents]="toolbarCandidateParents"
-                    [hideAssigneeFilter]="hideToolbarAssigneeFilter()"
+                    [filterMode]="toolbarFilterMode()"
                 />
             </div>
-            @if (showBulkDeleteCompletedButton()) {
-                <button type="button" class="ct-header-delete" (click)="deleteAllCompletedLogs()" title="全完了ログ削除" aria-label="全完了ログ削除">
+            @if (!isTeamGuestViewer() && showBulkDeleteCompletedButton()) {
+                <button
+                    type="button"
+                    class="ct-header-delete"
+                    [disabled]="selectedTrashableIds.length === 0"
+                    (click)="deleteAllCompletedLogs()"
+                    title="選択したタスクをゴミ箱へ"
+                    aria-label="選択したタスクをゴミ箱へ"
+                >
                     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
                         <path
                             fill="currentColor"
@@ -40,6 +57,7 @@
                 <button type="button" class="icon-gear" (click)="toggleRightMenu($event)" [attr.aria-expanded]="rightMenuOpen" aria-label="設定">⚙</button>
             </div>
         </header>
+        </div>
 
         @if (completedList.length === 0) {
             <div class="ct-empty card-elevated">
@@ -56,10 +74,12 @@
         } @else {
             <div class="ct-list">
                 @for (task of visibleCompleted; track task.id) {
-                    <article class="ct-card card-elevated">
+                    <article class="ct-card card-elevated" [class.ct-card--guest-view]="isTeamGuestViewer()">
+                        @if (!isTeamGuestViewer()) {
                         <label class="ct-check-wrap">
                             <input type="checkbox" [checked]="isSelected(task.id)" (change)="toggleSelect(task.id, $any($event.target).checked)" />
                         </label>
+                        }
                         <div class="ct-card__body">
                             <div class="ct-card__left">
                                 <p class="ct-dl">{{ formatDeadline(task.deadline) }}</p>
@@ -110,7 +130,7 @@
                 />
             } @else {
                 @if (showAdminDrawerNav('manage')) {
-                    <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">親タスク管理</a>
+                    <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item" (click)="closeRightMenu()">責任者ページに戻る</a>
                 }
                 @if (showAdminDrawerNav('ops')) {
                     <a [routerLink]="['/admin/ops-status', projectId]" class="side-drawer__item" (click)="closeRightMenu()">チーム稼働状況</a>
@@ -131,8 +151,8 @@
                         完了したタスク
                     </a>
                 }
-                <a routerLink="/member/hub" class="side-drawer__item" (click)="closeRightMenu()">メンバーページに戻る</a>
             }
+            <app-drawer-logout (nav)="closeRightMenu()" />
         </nav>
     </aside>
 </div>

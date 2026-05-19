@@ -1,0 +1,199 @@
+.landing {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(129, 212, 250, 0.35), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(174, 213, 129, 0.25), transparent),
+        linear-gradient(165deg, #e8eef5 0%, #f5f7fa 45%, #eef2f7 100%);
+}
+
+.landing__card--rich {
+    width: min(100%, 32rem);
+    padding: 2rem 1.75rem 1.5rem;
+    border-radius: 24px;
+    background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow:
+        0 24px 48px rgba(15, 23, 42, 0.12),
+        0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.landing__eyebrow {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5c6bc0;
+}
+
+.landing__title {
+    margin: 0 0 0.75rem;
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #1a237e;
+}
+
+.landing__lead {
+    margin: 0 0 1.25rem;
+    line-height: 1.55;
+    color: #455a64;
+    font-size: 0.95rem;
+}
+
+.landing__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 1rem;
+}
+
+.landing__cta {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-weight: 700;
+    border-radius: 14px;
+}
+
+.landing__cta--secondary {
+    background: #fff;
+    border: 2px solid #90a4ae;
+}
+
+.landing__pending {
+    margin: 0.75rem 0 0.35rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 12px;
+    background: linear-gradient(90deg, #fff8e1, #ffecb3);
+    border: 1px solid #ffca28;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #e65100;
+}
+
+.landing__pending-list {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+    color: #546e7a;
+}
+
+.landing__logout {
+    margin-top: 0.25rem;
+    opacity: 0.85;
+}
+
+.landing-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(3px);
+}
+
+.landing-modal {
+    position: fixed;
+    z-index: 1001;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(92vw, 26rem);
+    padding: 1.2rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    border-radius: 20px;
+}
+
+.landing-modal--rich {
+    background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+}
+
+.landing-modal--success .landing-modal__title {
+    color: #2e7d32;
+}
+
+.landing-modal__title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+.landing-modal__lead {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: #555;
+}
+
+.landing-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.landing-field__label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #444;
+}
+
+.landing-code-input {
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 800;
+    text-align: center;
+}
+
+.landing-invite-box {
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+}
+
+.landing-invite-box__label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 0.35rem;
+}
+
+.landing-invite-box__row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.landing-invite-box__code {
+    flex: 1;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    padding: 0.35rem 0.5rem;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px dashed #66bb6a;
+}
+
+.landing-invite-box__hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.72rem;
+    color: #555;
+}
+
+.landing-invite-box__hint--ok {
+    color: #2e7d32;
+    font-weight: 700;
+}
+
+.landing-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.15rem;
+}

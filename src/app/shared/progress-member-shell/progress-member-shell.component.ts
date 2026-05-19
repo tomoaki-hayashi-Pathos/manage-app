@@ -36,6 +36,8 @@ export class ProgressMemberShellComponent implements OnInit, OnDestroy {
   @Input() showOlDock = true;
   /** チームメンバー画面以外では停滞報告・進捗確認モーダルを出さない */
   @Input() suppressProgressStagnationUi = false;
+  /** true のとき停滞ボタン行はヘッダー側に出す（シェル内バーは非表示） */
+  @Input() hideStagnationActionBar = false;
 
   stagnationChildId = '';
   stagnationReason = '';

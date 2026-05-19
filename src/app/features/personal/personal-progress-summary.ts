@@ -5,12 +5,14 @@ import { AppService } from '../../app.service';
 import { AuthSessionService } from '../../services/auth-session.service';
 import type { ParentTask, TaskStatus } from '../../core/interface';
 import { MemberNavLinksComponent } from '../member/member-nav-links';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
 import { MemberAccessService } from '../../services/member-access.service';
 
 @Component({
     selector: 'app-personal-progress-summary',
     standalone: true,
-    imports: [CommonModule, MemberNavLinksComponent],
+    imports: [CommonModule, MemberNavLinksComponent, ProjectTopMenuComponent, DrawerLogoutComponent],
     templateUrl: './personal-progress-summary.html',
     styleUrls: ['../admin/Manage-tasks.css', './personal-progress-summary.css']
 })
@@ -38,7 +40,7 @@ export class PersonalProgressSummaryComponent implements OnInit {
         return id ? (this.app.getMemberById(id)?.name ?? '') : '';
     });
 
-    private readonly personalProjectId = computed(() => {
+    readonly personalProjectId = computed(() => {
         void this.app.notificationTick();
         const id = this.uid();
         return id ? this.app.resolvePersonalTaskProjectIdForMember(id) : '';

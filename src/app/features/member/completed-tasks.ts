@@ -10,17 +10,21 @@ import { AuthSessionService } from '../../services/auth-session.service';
 import { MemberTaskRouteContext, readMemberTaskRouteMode } from './member-task-route-context';
 import { MemberAccessService } from '../../services/member-access.service';
 import { TaskSearchFilterToolbarComponent } from '../../shared/task-search-filter-toolbar/task-search-filter-toolbar.component';
+import { ProjectTopMenuComponent } from '../../shared/project-top-menu/project-top-menu';
+import { DrawerLogoutComponent } from '../../shared/drawer-logout/drawer-logout';
 import {
     defaultToolbarFilterState,
     parentMatchesToolbarFilters,
+    type TaskToolbarFilterMode,
     type TaskToolbarFilterState,
+    type ToolbarFilterContext,
 } from '../../shared/task-search-filter-toolbar/task-search-filter.util';
 import { showAdminDrawerLink, type AdminDrawerNavTarget } from '../admin/admin-drawer-nav.util';
 
 @Component({
     selector: 'app-completed-tasks',
     standalone: true,
-    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent],
+    imports: [CommonModule, RouterLink, FormsModule, MemberNavLinksComponent, TaskSearchFilterToolbarComponent, ProjectTopMenuComponent, DrawerLogoutComponent],
     templateUrl: './completed-tasks.html',
     styleUrls: ['../admin/Manage-tasks.css', './limit-tasks.css', './completed-tasks.css']
 })
@@ -99,9 +103,16 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
         return !this.route.snapshot.paramMap.get('memberId');
     }
 
-    /** チーム管理の完了ページと同様の「全完了削除」（個人ワークスペースでも利用可） */
+    get actorUid(): string | null {
+        return this.memberId ?? this.appService.getProjectAdminId(this.projectId) ?? this.auth.user()?.uid ?? null;
+    }
+
+    canTrashTask(task: ParentTask): boolean {
+        return this.appService.memberCanDeleteParent(task, this.actorUid);
+    }
+
     showBulkDeleteCompletedButton(): boolean {
-        return this.isAdminView || this.ctx.mode === 'personal';
+        return this.completedList.some((t) => this.canTrashTask(t));
     }
 
     adminNavBadge(page: AdminNavPageKey): number {
@@ -114,7 +125,9 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     }
 
     get projectName(): string {
-        if (this.ctx.mode === 'personal') return '個人タスク';
+        if (this.ctx.mode === 'personal') {
+            return this.appService.getProjectDisplayName(this.projectId);
+        }
         return this.appService.projects.find((p) => p.id === this.projectId)?.name ?? '';
     }
 
@@ -131,9 +144,13 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
                     this.appService.isSharedTaskVisibleToAdmin(t)
             );
         } else if (this.memberId) {
-            list = list.filter(
-                (t) => t.leadAssigneeId === this.memberId || (t.memberIds && t.memberIds.includes(this.memberId!))
-            );
+            if (this.isTeamGuestViewer()) {
+                list = list.filter((t) => !this.appService.isPrivateMyHiddenFromOtherMember(t, this.memberId!));
+            } else {
+                list = list.filter(
+                    (t) => t.leadAssigneeId === this.memberId || (t.memberIds && t.memberIds.includes(this.memberId!))
+                );
+            }
         }
         return list.sort((a, b) => {
             const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
@@ -150,8 +167,20 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
         return [...this.completedList];
     }
 
-    hideToolbarAssigneeFilter(): boolean {
-        return this.ctx.mode === 'personal';
+    toolbarFilterMode(): TaskToolbarFilterMode {
+        return this.ctx.mode === 'personal' ? 'minimal' : 'completed';
+    }
+
+    private toolbarFilterCtx(): ToolbarFilterContext {
+        return {
+            app: this.appService,
+            projectId: this.projectId,
+            hasOpenStagnationForTask: () => false
+        };
+    }
+
+    isTeamGuestViewer(): boolean {
+        return this.ctx.mode === 'team' && !!this.memberId && this.appService.isProjectGuest(this.projectId, this.memberId);
     }
 
     /** 個人ワークスペースのみ: 担当・メンバー表示を非表示 */
@@ -160,7 +189,9 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     }
 
     get visibleCompleted(): ParentTask[] {
-        return this.completedList.filter((t) => parentMatchesToolbarFilters(this.appService, t, this.toolbarFilter));
+        return this.completedList.filter((t) =>
+            parentMatchesToolbarFilters(this.toolbarFilterCtx(), t, this.toolbarFilter, this.toolbarFilterMode())
+        );
     }
 
     toggleSelect(taskId: string, checked: boolean): void {
@@ -175,7 +206,15 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
         return Object.keys(this.selected).filter((id) => this.selected[id]);
     }
 
+    get selectedTrashableIds(): string[] {
+        return this.selectedIds.filter((id) => {
+            const t = this.appService.parentTasks.find((p) => p.id === id);
+            return t && t.projectId === this.projectId && t.status === '完了' && this.canTrashTask(t);
+        });
+    }
+
     revertBulk(): void {
+        if (this.isTeamGuestViewer()) return;
         const ids = this.selectedIds.filter((id) => {
             const t = this.appService.parentTasks.find((p) => p.id === id);
             return t && t.projectId === this.projectId && t.status === '完了';
@@ -190,12 +229,17 @@ export class CompletedTasksComponent implements OnInit, OnDestroy {
     }
 
     deleteAllCompletedLogs(): void {
-        if (!this.showBulkDeleteCompletedButton()) return;
-        const n = this.appService.parentTasks.filter((t) => t.projectId === this.projectId && t.status === '完了').length;
-        if (n === 0) return;
-        if (!confirm(`完了済みタスク ${n} 件をすべて削除しますか？（元に戻せません）`)) return;
-        this.appService.deleteAllCompletedParentTasksInProject(this.projectId);
-        this.selected = {};
+        if (this.isTeamGuestViewer()) return;
+        const ids = this.selectedTrashableIds;
+        if (ids.length === 0) {
+            alert('タスクを選択してください。');
+            return;
+        }
+        if (!confirm(`選択した ${ids.length} 件をゴミ箱に移しますか？`)) return;
+        for (const id of ids) {
+            this.appService.trashParentTask(id, this.actorUid);
+            delete this.selected[id];
+        }
     }
 
     formatDeadline(deadline: Date | string | null): string {

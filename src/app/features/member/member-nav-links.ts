@@ -20,9 +20,8 @@ type NavLinkKey = MemberNavPageKey | 'summary';
             </a>
         }
         @if (navMode === 'adminSelf') {
-            <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item side-drawer__item--back-manage" (click)="nav.emit()">親タスク管理に戻る</a>
+            <a [routerLink]="['/admin/manage-tasks', projectId]" class="side-drawer__item side-drawer__item--back-manage" (click)="nav.emit()">責任者ページに戻る</a>
         }
-        <a routerLink="/member/hub" class="side-drawer__item side-drawer__item--back-hub" (click)="nav.emit()">メンバーページに戻る</a>
     `,
     styles: `
         :host {
@@ -111,7 +110,7 @@ export class MemberNavLinksComponent {
     ];
 
     private readonly personalEntries: { key: NavLinkKey; label: string }[] = [
-        { key: 'limit', label: 'MYタスク一覧' },
+        { key: 'limit', label: '自分用ToDo一覧' },
         { key: 'today', label: '今日やること' },
         { key: 'not-set', label: '期限が設定されていないタスク一覧' },
         { key: 'completed', label: '完了したタスク' },
@@ -121,6 +120,9 @@ export class MemberNavLinksComponent {
     get displayEntries(): { key: NavLinkKey; label: string }[] {
         if (this.navMode === 'personal') {
             return this.personalOmitSummaryLink ? this.personalEntries.filter((e) => e.key !== 'summary') : this.personalEntries;
+        }
+        if (this.navMode === 'member' && this.appService.isProjectGuest(this.projectId, this.memberId)) {
+            return this.teamEntries.filter((e) => e.key === 'limit' || e.key === 'completed');
         }
         return this.teamEntries;
     }

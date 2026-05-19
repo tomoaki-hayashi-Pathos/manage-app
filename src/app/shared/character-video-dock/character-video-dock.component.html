@@ -1,0 +1,32 @@
+<div class="character-video-dock__media">
+    <video
+        #dockVideo
+        class="character-video-dock__video"
+        [src]="videoSrc"
+        autoplay
+        loop
+        muted
+        playsinline
+        preload="auto"
+        (loadeddata)="onVideoReady()"
+    ></video>
+</div>
+<button
+    type="button"
+    class="character-video-dock__chat-btn"
+    (pointerdown)="onChatPointerDown($event)"
+    (click)="onChatClick($event)"
+    aria-label="チャットで相談"
+>
+    チャットで相談
+</button>
+<div
+    class="character-video-bubble"
+    [class.character-video-bubble--visible]="bubbleOpen"
+    [class.character-video-bubble--admin-consult]="showConfirmButton"
+>
+    <span class="character-video-bubble__body-text">{{ bubbleText }}</span>
+    @if (showConfirmButton) {
+        <button type="button" class="character-video-bubble__confirm" (click)="onConfirmClick($event)">確認</button>
+    }
+</div>
